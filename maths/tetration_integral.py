@@ -14,8 +14,8 @@ def tet_n(x, n):
     return y
 
 
-SAMPLES = 200
-MAX_N = 10
+SAMPLES = 10000
+MAX_N = 100
 
 xx = xr.DataArray(
     data=[np.linspace(0, 1, SAMPLES)],
