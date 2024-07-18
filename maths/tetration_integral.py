@@ -17,8 +17,11 @@ def tet_n(x, n):
 SAMPLES = 200
 MAX_N = 10
 
-src = xr.DataArray(data=np.linspace(0, 1, SAMPLES), dims=["x"])
-xx = src.expand_dims(dim="n")
+xx = xr.DataArray(
+    data=[np.linspace(0, 1, SAMPLES)],
+    coords={"x": np.linspace(0, 1, SAMPLES)},
+    dims=["n", "x"],
+)
 tet_ns = [xx ** 0, xx]
 for _ in range(MAX_N - 1):
     tet_ns.append(xx ** tet_ns[-1])
