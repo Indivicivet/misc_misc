@@ -24,9 +24,10 @@ def distances(i1d, axis):
 PER_COL_N = 4096 * 4096 // 10
 
 remapped = np.zeros_like(sorted_1dc)
-remapped[
-    np.argsort(distances(im_1d_col, 1))[-PER_COL_N:]
-] = sorted_1dc[np.argsort(distances(sorted_1dc, 1))[-PER_COL_N:]]
+for ax in [1, 0, 2]:
+    remapped[
+        np.argsort(distances(im_1d_col, ax))[-PER_COL_N:]
+    ] = sorted_1dc[np.argsort(distances(sorted_1dc, ax))[-PER_COL_N:]]
 
 Image.fromarray(remapped.reshape((4096, 4096, 3))).show()
 
