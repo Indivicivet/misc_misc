@@ -29,7 +29,9 @@ for ax in [1, 0, 2]:
         np.argsort(distances(im_1d_col, ax))[-PER_COL_N:]
     ] = sorted_1dc[np.argsort(distances(sorted_1dc, ax))[-PER_COL_N:]]
 
-Image.fromarray(remapped.reshape((4096, 4096, 3))).show()
+result_im = Image.fromarray(remapped.reshape((4096, 4096, 3)))
+result_im.show()
+result_im.save("4k_bijection_result.png")
 
 print("checking uniqueness is 16777216...")
 print("unique:", len(np.unique(remapped, axis=0)))
