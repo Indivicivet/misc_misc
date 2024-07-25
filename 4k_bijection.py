@@ -25,18 +25,25 @@ def distances(i1d, axs):
     )
 
 
-PER_COL_N = 4096 * 4096 // 10
-
 remapped = np.zeros_like(sorted_1dc_lookup)
 remaining_img = np.ones_like(sorted_1dc_lookup[..., 0])[..., np.newaxis]
 remaining_cols = np.ones_like(sorted_1dc_lookup[..., 0])[..., np.newaxis]
-for axes in [[1], [0], [2], [0, 1], [1, 2], [0, 2], [0, 1, 2]]:
+for axes, max_ratio in {
+    (1, ): 0.1,
+    (0, ): 0.1,
+    (2, ): 0.1,
+    (0, 1): 0.1,
+    (1, 2): 0.1,
+    (0, 2): 0.1,
+    (0, 1, 2): 1,
+}.items():
+    n_points = int(4096 * 4096 * max_ratio)
     img_points = np.argsort(
         distances(im_1d_col * remaining_img, axes)
-    )[-PER_COL_N:]
+    )[-n_points:]
     col_points = np.argsort(
         distances(sorted_1dc_values * remaining_cols, axes)
-    )[-PER_COL_N:]
+    )[-n_points:]
     remaining_img[img_points] -= 1
     remaining_cols[col_points] -= 1
     remapped[img_points] = sorted_1dc_lookup[col_points]
