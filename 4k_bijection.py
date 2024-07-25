@@ -28,19 +28,21 @@ def distances(i1d, axs):
 PER_COL_N = 4096 * 4096 // 10
 
 remapped = np.zeros_like(sorted_1dc_lookup)
-hit_img = np.zeros_like(sorted_1dc_lookup[..., 0])
-hit_cols = np.zeros_like(sorted_1dc_lookup[..., 0])
+remaining_img = np.ones_like(sorted_1dc_lookup[..., 0])[..., np.newaxis]
+remaining_cols = np.ones_like(sorted_1dc_lookup[..., 0])[..., np.newaxis]
 for axes in [[1], [0], [2], [0, 1], [1, 2], [0, 2]]:
-    img_points = np.argsort(distances(im_1d_col, axes))[-PER_COL_N:]
-    col_points = np.argsort(distances(sorted_1dc_values, axes))[-PER_COL_N:]
-    # todo :: actually need to just not update points that were already hit
-    hit_img[img_points] += 1
-    hit_cols[col_points] += 1
+    img_points = np.argsort(
+        distances(im_1d_col * remaining_img, axes)
+    )[-PER_COL_N:]
+    col_points = np.argsort(
+        distances(sorted_1dc_values * remaining_cols, axes)
+    )[-PER_COL_N:]
+    remaining_img[img_points] -= 1
+    remaining_cols[col_points] -= 1
     remapped[img_points] = sorted_1dc_lookup[col_points]
 
-# mishit_img = hit_img != 1
-# mishit_cols = hit_cols != 1
-# assert np.sum(mishit_img) == np.sum(mishit_cols)
+assert (remaining_img >= 0).all()
+assert (remaining_cols >= 0).all()
 
 result_im = Image.fromarray(remapped.reshape((4096, 4096, 3)))
 result_im.show()
