@@ -21,15 +21,12 @@ def distances(i1d, axis):
     return i1d[..., axis] / (1e-5 + np.sum(i1d ** 2, axis=1) ** 0.5)
 
 
-im_proj_green = distances(im_1d_col, 1)
-sorted_1dc_g = distances(sorted_1dc, 1)
-
 PER_COL_N = 4096 * 4096 // 10
 
-green_sort = np.argsort(im_proj_green)[-PER_COL_N:]
-green_allcol_sort = np.argsort(sorted_1dc_g)[-PER_COL_N:]
 remapped = np.zeros_like(sorted_1dc)
-remapped[green_sort] = sorted_1dc[green_allcol_sort]
+remapped[
+    np.argsort(distances(im_1d_col, 1))[-PER_COL_N:]
+] = sorted_1dc[np.argsort(distances(sorted_1dc, 1))[-PER_COL_N:]]
 
 Image.fromarray(remapped.reshape((4096, 4096, 3))).show()
 
