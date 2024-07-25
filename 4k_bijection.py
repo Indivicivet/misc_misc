@@ -44,9 +44,13 @@ for axes, max_ratio in {
     col_points = np.argsort(
         distances(sorted_1dc_values * remaining_cols, axes)
     )[-n_points:]
+    remapped[img_points] = (
+        # probably an abuse of numpy masking like this... todo figure that out :D
+        remaining_img[img_points] * sorted_1dc_lookup[col_points]
+        + ((~remaining_img) * remapped)[img_points]
+    )
     remaining_img[img_points] -= 1
     remaining_cols[col_points] -= 1
-    remapped[img_points] = sorted_1dc_lookup[col_points]
 
 assert (remaining_img >= 0).all()
 assert (remaining_cols >= 0).all()
