@@ -30,7 +30,7 @@ PER_COL_N = 4096 * 4096 // 10
 remapped = np.zeros_like(sorted_1dc_lookup)
 remaining_img = np.ones_like(sorted_1dc_lookup[..., 0])[..., np.newaxis]
 remaining_cols = np.ones_like(sorted_1dc_lookup[..., 0])[..., np.newaxis]
-for axes in [[1], [0], [2], [0, 1], [1, 2], [0, 2]]:
+for axes, ratio in [[1], [0], [2], [0, 1], [1, 2], [0, 2], [0, 1, 2]]:
     img_points = np.argsort(
         distances(im_1d_col * remaining_img, axes)
     )[-PER_COL_N:]
