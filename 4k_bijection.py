@@ -21,20 +21,13 @@ def distances(i1d, axis):
     return i1d[..., axis] / (1e-5 + np.sum(i1d ** 2, axis=1) ** 0.5)
 
 
-def invsort(arr):
-    argsort = np.argsort(arr)
-    inv = np.arange(len(argsort))
-    inv[argsort] = inv.copy()
-    return inv
-
-
 im_proj_green = distances(im_1d_col, 1)
 sorted_1dc_g = distances(sorted_1dc, 1)
 
-green_invsort = invsort(im_proj_green)
-allcol_sort = np.argsort(sorted_1dc_g)
-remapped = sorted_1dc[allcol_sort][green_invsort]
-
+green_sort = np.argsort(im_proj_green)
+green_allcol_sort = np.argsort(sorted_1dc_g)
+remapped = np.zeros_like(sorted_1dc)
+remapped[green_sort] = sorted_1dc[green_allcol_sort]
 
 Image.fromarray(remapped.reshape(4096, 4096, 3)).show()
 
