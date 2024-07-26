@@ -18,10 +18,14 @@ sorted_1dc_lookup = np.array([
 sorted_1dc_values = sorted_1dc_lookup.astype(float)
 
 
+COL_FAC = np.array([0.7, 1, 0.5])
+
+
 def distances(i1d, axs):
+    axs = list(axs)  # to index into 1D properly ^^;
     return (
-        np.sum(i1d[..., axs] ** 2, axis=1) ** 0.5
-        / (1e-5 + np.sum(i1d ** 2, axis=1) ** 0.5)
+        np.sum(i1d[..., axs] ** 2 * COL_FAC[axs], axis=1) ** 0.5
+        / (1e-5 + np.sum(i1d ** 2 * COL_FAC, axis=1) ** 0.5)
     )
 
 
@@ -57,10 +61,10 @@ assert img_pts_left == cols_left
 
 # final "greys" update; this time using dist vs black rather than white
 img_points = np.argsort(
-    np.sum(im_1d_col ** 2, axis=1) * remaining_img[..., 0]
+    np.sum(im_1d_col ** 2 * COL_FAC, axis=1) * remaining_img[..., 0]
 )[-img_pts_left:]
 col_points = np.argsort(
-    np.sum(sorted_1dc_values ** 2, axis=1) * remaining_cols[..., 0]
+    np.sum(sorted_1dc_values ** 2 * COL_FAC, axis=1) * remaining_cols[..., 0]
 )[-img_pts_left:]
 remapped[img_points] = sorted_1dc_lookup[col_points]
 
