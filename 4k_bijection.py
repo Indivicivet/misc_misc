@@ -35,7 +35,6 @@ for axes, max_ratio in {
     (0, 1): 0.1,
     (1, 2): 0.1,
     (0, 2): 0.1,
-    (0, 1, 2): 1,
 }.items():
     n_points = int(4096 * 4096 * max_ratio)
     img_points = np.argsort(
@@ -44,16 +43,26 @@ for axes, max_ratio in {
     col_points = np.argsort(
         distances(sorted_1dc_values * remaining_cols, axes)
     )[-n_points:]
-    remapped[img_points] = (
-        # probably an abuse of numpy masking like this... todo figure that out :D
-        remaining_img[img_points] * sorted_1dc_lookup[col_points]
-        + ((~remaining_img) * remapped)[img_points]
-    )
+    remapped[img_points] = sorted_1dc_lookup[col_points]
     remaining_img[img_points] -= 1
     remaining_cols[col_points] -= 1
 
 assert (remaining_img >= 0).all()
 assert (remaining_cols >= 0).all()
+
+img_pts_left = np.sum(remaining_img)
+cols_left = np.sum(remaining_cols)
+print(f"{img_pts_left=}, {cols_left=}")
+assert img_pts_left == cols_left
+
+# final "greys" update; this time using dist vs black rather than white
+img_points = np.argsort(
+    np.sum(im_1d_col ** 2, axis=1) * remaining_img[..., 0]
+)[:img_pts_left]
+col_points = np.argsort(
+    np.sum(sorted_1dc_values ** 2, axis=1) * remaining_cols[..., 0]
+)[:img_pts_left]
+remapped[img_points] = sorted_1dc_lookup[col_points]
 
 result_im = Image.fromarray(remapped.reshape((4096, 4096, 3)))
 result_im.show()
