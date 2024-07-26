@@ -26,8 +26,8 @@ def distances(i1d, axs):
 
 
 remapped = np.zeros_like(sorted_1dc_lookup)
-remaining_img = np.ones_like(sorted_1dc_lookup[..., 0])[..., np.newaxis]
-remaining_cols = np.ones_like(sorted_1dc_lookup[..., 0])[..., np.newaxis]
+remaining_img = np.ones((sorted_1dc_lookup.shape[0], 1), dtype=int)
+remaining_cols = np.ones((sorted_1dc_lookup.shape[0], 1), dtype=int)
 for axes, max_ratio in {
     (1, ): 0.1,
     (0, ): 0.1,
@@ -58,10 +58,10 @@ assert img_pts_left == cols_left
 # final "greys" update; this time using dist vs black rather than white
 img_points = np.argsort(
     np.sum(im_1d_col ** 2, axis=1) * remaining_img[..., 0]
-)[:img_pts_left]
+)[-img_pts_left:]
 col_points = np.argsort(
     np.sum(sorted_1dc_values ** 2, axis=1) * remaining_cols[..., 0]
-)[:img_pts_left]
+)[-img_pts_left:]
 remapped[img_points] = sorted_1dc_lookup[col_points]
 
 result_im = Image.fromarray(remapped.reshape((4096, 4096, 3)))
