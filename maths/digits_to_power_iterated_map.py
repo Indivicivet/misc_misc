@@ -1,3 +1,5 @@
+import math
+
 def digits_to_power(v):
     """
     consider the map ...dbca -> ...d^4 c^3 b^2 a for ...dbca the decimal rep
