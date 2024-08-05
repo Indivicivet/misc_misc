@@ -15,7 +15,10 @@ def iterated_digits_to_power(v0, n_iters=100):
     for _ in range(n_iters):
         iterated = digits_to_power(res[-1])
         if iterated in res_set:
-            res.append(f"looped {iterated}")
+            loop_circ = res[res.index(iterated):]
+            lowest_idx = loop_circ.index(min(loop_circ))
+            loop = loop_circ[lowest_idx:] + loop_circ[:lowest_idx]
+            res.append(f"loop: {loop}")
             return res
         res.append(iterated)
         res_set.add(iterated)
