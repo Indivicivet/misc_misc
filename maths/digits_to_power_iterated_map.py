@@ -7,12 +7,14 @@ def digits_to_power(v):
 
 def iterated_digits_to_power(v0, n_iters=10):
     res = [v0]
+    res_set = {v0}
     for _ in range(n_iters):
         iterated = digits_to_power(res[-1])
-        if iterated in res:
+        if iterated in res_set:
             res.append(f"looped {iterated}")
             return res
         res.append(iterated)
+        res_set.add(iterated)
     return res
 
 
