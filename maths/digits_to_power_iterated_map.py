@@ -1,6 +1,8 @@
 import math
 from collections import Counter
 
+from tqdm import tqdm
+
 
 def digits_to_power(v):
     """
@@ -27,8 +29,8 @@ def iterated_digits_to_power(v0, n_iters=100):
 
 if __name__ == "__main__":
     outcomes = Counter()
-    for i in range(1, 100000):
+    for i in tqdm(range(1, 1000000)):
         result = iterated_digits_to_power(i)
-        print(i, result)
+        # print(i, result)
         outcomes[result[-1]] += 1
     print("outcomes:", outcomes)
