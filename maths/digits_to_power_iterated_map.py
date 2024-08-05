@@ -29,7 +29,7 @@ def iterated_digits_to_power(v0, n_iters=100):
 
 if __name__ == "__main__":
     outcomes = Counter()
-    for i in tqdm(range(1, 1000000)):
+    for i in tqdm(range(1, 10_000_000)):
         result = iterated_digits_to_power(i)
         # print(i, result)
         outcomes[result[-1]] += 1
