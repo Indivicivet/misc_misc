@@ -39,17 +39,18 @@ def find_loops(max_val=10_000_000):
     return outcomes
 
 
-def find_fx_eq_xplus1(max_val=10_000_000):
+def find_fx_eq_xplusk(k=1, max_val=10_000_000):
     """
-    only [27, 323] up to 100,000,000
+    f(x) = x + 1: only [27, 323] up to 100,000,000
     """
     matches = []
     for i in tqdm(range(1, max_val)):
-        if digits_to_power(i) == i + 1:
+        if digits_to_power(i) == i + k:
             matches.append(i)
     return matches
 
 
 if __name__ == "__main__":
-    # print("loops:", find_loops())
-    print("f(x) = x+1:", find_fx_eq_xplus1())
+    # print("loops:", find_loops(100_000_000))
+    # print("f(x) = x+1:", find_fx_eq_xplusk(k=1))
+    print("f(x) = x:", find_fx_eq_xplusk(k=0, max_val=1_000_000_000))
