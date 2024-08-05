@@ -28,6 +28,9 @@ def iterated_digits_to_power(v0, n_iters=100):
 
 
 def find_loops(max_val=10_000_000):
+    """
+    only single digit, [64, 144] and [1715] up to 10,000,000
+    """
     outcomes = Counter()
     for i in tqdm(range(1, max_val)):
         result = iterated_digits_to_power(i)
@@ -37,6 +40,9 @@ def find_loops(max_val=10_000_000):
 
 
 def find_fx_eq_xplus1(max_val=10_000_000):
+    """
+    only [27, 323] up to 100,000,000
+    """
     matches = []
     for i in tqdm(range(1, max_val)):
         if digits_to_power(i) == i + 1:
