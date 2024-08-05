@@ -27,10 +27,24 @@ def iterated_digits_to_power(v0, n_iters=100):
     return res
 
 
-if __name__ == "__main__":
+def find_loops(max_val=10_000_000):
     outcomes = Counter()
-    for i in tqdm(range(1, 10_000_000)):
+    for i in tqdm(range(1, max_val)):
         result = iterated_digits_to_power(i)
         # print(i, result)
         outcomes[result[-1]] += 1
-    print("outcomes:", outcomes)
+    return outcomes
+
+
+def find_fx_eq_xplus1(max_val=10_000_000):
+    matches = []
+    for i in tqdm(range(1, max_val)):
+        result = digits_to_power(i)
+        if result == i + 1:
+            matches.append(i)
+    return matches
+
+
+if __name__ == "__main__":
+    # print("loops:", find_loops())
+    print("f(x) = x+1:", find_fx_eq_xplus1())
