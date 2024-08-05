@@ -39,8 +39,7 @@ def find_loops(max_val=10_000_000):
 def find_fx_eq_xplus1(max_val=10_000_000):
     matches = []
     for i in tqdm(range(1, max_val)):
-        result = digits_to_power(i)
-        if result == i + 1:
+        if digits_to_power(i) == i + 1:
             matches.append(i)
     return matches
 
