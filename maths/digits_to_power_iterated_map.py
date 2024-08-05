@@ -1,4 +1,6 @@
 import math
+from collections import Counter
+
 
 def digits_to_power(v):
     """
@@ -21,9 +23,9 @@ def iterated_digits_to_power(v0, n_iters=100):
 
 
 if __name__ == "__main__":
-    outcomes = set()
+    outcomes = Counter()
     for i in range(1, 100000):
         result = iterated_digits_to_power(i)
         print(i, result)
-        outcomes.add(result[-1])
+        outcomes[result[-1]] += 1
     print("outcomes:", outcomes)
