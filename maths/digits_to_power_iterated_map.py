@@ -21,5 +21,9 @@ def iterated_digits_to_power(v0, n_iters=100):
 
 
 if __name__ == "__main__":
-    for i in range(1, 1000):
-        print(i, iterated_digits_to_power(i))
+    outcomes = set()
+    for i in range(1, 100000):
+        result = iterated_digits_to_power(i)
+        print(i, result)
+        outcomes.add(result[-1])
+    print("outcomes:", outcomes)
