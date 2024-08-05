@@ -9,8 +9,8 @@ def iterated_digits_to_power(v0, n_iters=10):
     res = [v0]
     for _ in range(n_iters):
         iterated = digits_to_power(res[-1])
-        if iterated == res[-1]:
-            res.append("converged")
+        if iterated in res:
+            res.append(f"looped {iterated}")
             return res
         res.append(iterated)
     return res
