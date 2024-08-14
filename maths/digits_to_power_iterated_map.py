@@ -42,6 +42,7 @@ def find_loops(max_val=10_000_000):
 def find_fx_eq_xplusk(k=1, max_val=10_000_000):
     """
     f(x) = x + 1: only [27, 323] up to 100,000,000
+    1715 up to 1,000,000,000
     """
     matches = []
     for i in tqdm(range(1, max_val)):
