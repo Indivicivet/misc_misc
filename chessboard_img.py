@@ -25,5 +25,5 @@ def make_chessboard(
 
 
 if __name__ == "__main__":
-    for w, h in [(8, 8), (10, 8), (12, 8)]:
+    for w, h in [(8, 8), (10, 8), (12, 8), (13, 9), (10, 10), (12, 10), (12, 9), (11, 11), (15, 11), (14, 10)]:
         make_chessboard(width=w, height=h).save(f"chessboard_{w=}_{h=}.png")
