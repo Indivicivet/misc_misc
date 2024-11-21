@@ -7,11 +7,12 @@ from typing import Self
 class GraphNode:
     children: list[Self] = field(default_factory=list)
 
-    def __init__(self):
-        self.tag = random.randint(1_000_000_000)
+    def __post_init__(self):
+        self.tag = random.randint(1, 1_000_000_000)
 
     def __hash__(self):
         return self.tag
+
 
 @dataclass
 class GraphTotal:
@@ -27,7 +28,8 @@ def get_cyclic(n):
         curr = GraphNode()
         prev.children.append(curr)
         total.items.add(curr)
-    init.children.append(curr)
+    curr.children.append(init)
+    return total
 
 
 if __name__ == "__main__":
