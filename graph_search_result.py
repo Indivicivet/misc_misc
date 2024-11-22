@@ -13,6 +13,11 @@ class GraphNode:
     def __hash__(self):
         return self.tag
 
+    def __eq__(self, other):
+        if isinstance(other, type(self)):
+            return self.tag == other.tag
+        return NotImplemented
+
 
 @dataclass
 class GraphTotal:
@@ -33,4 +38,14 @@ def get_cyclic(n):
 
 
 if __name__ == "__main__":
-    print(get_cyclic(3))
+    c3 = get_cyclic(3)
+    f_vals = {}
+    a_node = next(iter(c3.items))
+    i = 0
+    f_vals[a_node] = i
+    curr_node = a_node.children[0]
+    while curr_node != a_node:
+        i += 1
+        f_vals[curr_node] = i
+        curr_node = curr_node.children[0]
+    print(f_vals)
