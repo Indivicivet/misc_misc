@@ -37,6 +37,30 @@ def get_cyclic(n):
     return total
 
 
+@dataclass
+class GraphSearchResult:
+    search_history: list[GraphNode] = field(default_factory=list)
+    future_queue: list[GraphNode] = field(default_factory=list)
+    found: bool = False
+    searched_set: set[GraphNode] = field(default_factory=set)  # for speed
+
+    @classmethod
+    def depth_first(cls, structure, function, target):
+        res = cls()
+        res.future_queue.append(next(iter(structure.items)))
+        while res.future_queue:
+            curr = res.future_queue.pop()
+            res.search_history.append(curr)
+            res.future_queue.extend(
+                [x for x in curr.children if x not in res.searched_set]
+            )
+            res.searched_set.add(curr)
+            if function[curr] == target:
+                res.found = True
+                break
+        return res
+
+
 if __name__ == "__main__":
     c3 = get_cyclic(3)
     f_vals = {}
@@ -49,3 +73,5 @@ if __name__ == "__main__":
         f_vals[curr_node] = i
         curr_node = curr_node.children[0]
     print(f_vals)
+    print(GraphSearchResult.depth_first(c3, f_vals, 2))
+    print(GraphSearchResult.depth_first(c3, f_vals, 4))
