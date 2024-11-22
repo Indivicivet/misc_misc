@@ -6,6 +6,7 @@ from typing import Self
 @dataclass
 class GraphNode:
     children: list[Self] = field(default_factory=list)
+    tag: int = -1
 
     def __post_init__(self):
         self.tag = random.randint(1, 1_000_000_000)
@@ -17,6 +18,9 @@ class GraphNode:
         if isinstance(other, type(self)):
             return self.tag == other.tag
         return NotImplemented
+
+    def __repr__(self):
+        return f"{type(self).__name__}(tag={str(self.tag)})"
 
 
 @dataclass
