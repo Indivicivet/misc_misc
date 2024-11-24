@@ -36,7 +36,7 @@ for row in itertools.batched(results, DISPLAY_ROW_WIDTH):
     for jj in range(SIZE):
         print(
             "|".join(
-                "".join(" X"[val] for val in arr[jj])
+                "".join("X" if val else " " for val in arr[jj])
                 for arr in arrs
             )
         )
