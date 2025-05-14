@@ -1,3 +1,11 @@
+"""
+run this script with .txt files from anki's "Export Notes ->
+Cards in Plain Text" in the same directory and it will create _jpwords.txt
+files containing the Japanese words from front sides of the flashcards*
+
+*assumes you have flashcards with Japanese front side
+"""
+
 from pathlib import Path
 
 for fn in Path.cwd().glob("*.txt"):
