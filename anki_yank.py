@@ -7,7 +7,7 @@ for fn in Path.cwd().glob("*.txt"):
         " // ".join(
             line.split()[0]
             for line in fn.read_text(encoding="utf-8").splitlines()
-            if line[0] not in "#1qwertyuiopasdfghjklzxcvbnm"
+            if line[0] not in "#1qwertyuiopasdfghjklzxcvbnm\\\"("
         ),
         encoding="utf-8",
     )
