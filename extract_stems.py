@@ -5,14 +5,15 @@ equivalent to running demucs + Stem Creator with fewer steps
 
 requires ffmpeg, mp4box installed
 + pip install demucs
++ pip install stemtool
 """
-
+import json
 import subprocess
 from pathlib import Path
 
 import mutagen.easyid3
 import pydub
-
+import stempeg
 
 FFMPEG_EXE = "ffmpeg.exe"  # obvs ensure in path
 MP4BOX_EXE = "MP4Box.exe"  # obvs ensure in path
@@ -90,13 +91,13 @@ combined.export(master_path, format="wav")
 master_mp4_path = master_path.with_suffix(".mp4")
 ffmpeg_encode(master_path, master_mp4_path)
 
-stem_output = OUT_FOLDER / f"{input_path.stem}.stem.mp4"
+temp_no_meta_stem = temp_dir / f"{input_path.stem}_nometa.stem.mp4"
 print(f"running mp4box")
 subprocess.run(
     [
         MP4BOX_EXE,
         "-new",
-        str(stem_output),
+        str(temp_no_meta_stem),
         f"-add",
         f"{master_mp4_path}:name=Master:group=1",
         f"-add",
@@ -110,9 +111,32 @@ subprocess.run(
     ]
 )
 
+stem_metadata = {
+    "version": "1.0",
+    "title": title,
+    "artist": artist,
+    "album": album,
+    "stems": [
+        {"id": 1, "name": "Vocals", "color": "#FF00FF"},
+        {"id": 2, "name": "Drums", "color": "#FF0000"},
+        {"id": 3, "name": "Bass", "color": "#FFFF00"},
+        {"id": 4, "name": "Other", "color": "#00FFFF"},
+    ]
+}
+json_path = master_mp4_path.with_name("stem_metadata.json")
+with open(json_path, "w") as f:
+    json.dump(stem_metadata, f, indent=2)
+stempeg.inject(
+    filename=str(temp_no_meta_stem),
+    metadata=str(stem_metadata),
+    out_filename=str(OUT_FOLDER / f"{input_path.stem}.stem.mp4"),
+)
+print("done!")
+
 print("clearing temp")
 master_path.unlink()
 master_mp4_path.unlink()
+json_path.unlink()
 for fp in stem_mp3s.values():
     fp.unlink()
 for fp in stem_mp4s.values():
