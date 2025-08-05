@@ -7,7 +7,7 @@ class PlusMinusModule(torch.nn.Module):
         self.param = torch.nn.Parameter(torch.tensor(10.0))
 
     def forward(self, x):
-        return (self.param ** 2 * x + (-self.param)).sum()
+        return (self.param ** 2 * x + (-self.param)).sum()  # use param twice
 
 
 model = PlusMinusModule()
