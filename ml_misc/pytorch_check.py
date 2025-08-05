@@ -12,5 +12,7 @@ class PlusMinusModule(torch.nn.Module):
 
 model = PlusMinusModule()
 loss = model(torch.ones(5))
+loss.backward(retain_graph=True)  # no retain graph => error
 loss.backward()
+# loss.backward()  # if re-called => error
 print(f"{loss.item()=}, {model.param=}, {model.param.grad=}")
