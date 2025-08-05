@@ -11,8 +11,10 @@ class PlusMinusModule(torch.nn.Module):
 
 
 model = PlusMinusModule()
+opt = torch.optim.Adam(model.parameters(), lr=1e-2)
 loss = model(torch.ones(5))
 loss.backward(retain_graph=True)  # no retain graph => error
 loss.backward()
 # loss.backward()  # if re-called => error
+opt.step()
 print(f"{loss.item()=}, {model.param=}, {model.param.grad=}")
