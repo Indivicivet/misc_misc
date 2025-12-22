@@ -10,4 +10,4 @@ call "D:\music_prod\demucs_py310_v2\Scripts\python.exe" "D:\repos\stemgen\stemge
 
 echo "you should delete .\temp\%FILENAME%.wav"
 
-powershell -c "[console]::beep(1000,500)"
+:: powershell -c "[console]::beep(1000,500)"
