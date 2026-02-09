@@ -15,7 +15,7 @@
 
 ## Post-Edit Requirements:
 - Verify any modifications you made - check that ALL modifications in the diff relate DIRECTLY to the task you are currently working on. Check there are no random other changes to unrelated or unmodified code.
-- After modifying any Python files, you MUST immediately run `black <file_path>` using the integrated terminal.
+- After modifying any Python files, you MUST immediately run `python -m black <file_path>` using the integrated terminal.
 - Verification: If `black` produces changes, you must read the updated file and ensure the final state you present to me is the formatted version.
 - Silent Execution: You do not need to ask for permission to run the formatter; consider it a mandatory part of the "Save" process.
 
