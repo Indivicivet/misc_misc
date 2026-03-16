@@ -9,7 +9,7 @@ import argparse
 import matplotlib.pyplot as plt
 
 
-def listen(keywords):
+def listen(keywords, max_samples):
     print("Listener started. Waiting for data...")
     plt.ion()  # interactive mode
     fig, ax = plt.subplots(figsize=(10, 6))
@@ -36,10 +36,10 @@ def listen(keywords):
             datas[key].append(val)
             lines[key].set_data(range(len(datas[key])), datas[key])
             num_points = max(len(datas[key]) for key in datas)
-            if num_points > 50:
-                ax.set_xlim(num_points - 50, num_points)
+            if num_points > max_samples:
+                ax.set_xlim(num_points - max_samples, num_points)
             else:
-                ax.set_xlim(0, max(50, num_points))
+                ax.set_xlim(0, max(max_samples, num_points))
 
             # Dynamically scale the y-axis
             ax.relim()
@@ -60,5 +60,8 @@ if __name__ == "__main__":
     parser.add_argument(
         "keywords", nargs="*", default=["value_a", "value_b"]
     )
+    parser.add_argument(
+        "--max_samples", "-m", type=int, default=100
+    )
     args = parser.parse_args()
-    listen(keywords=args.keywords)
+    listen(keywords=args.keywords, max_samples=args.max_samples)
