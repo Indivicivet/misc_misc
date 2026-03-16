@@ -1,5 +1,6 @@
 import sys
 import re
+import argparse
 
 import matplotlib.pyplot as plt
 
@@ -50,6 +51,9 @@ def listen(keywords):
 
 
 if __name__ == "__main__":
-    listen(
-        keywords=["value_a", "value_b"],
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "keywords", nargs="*", default=["value_a", "value_b"]
     )
+    args = parser.parse_args()
+    listen(keywords=args.keywords)
