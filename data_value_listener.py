@@ -4,7 +4,7 @@ import re
 import matplotlib.pyplot as plt
 
 
-if __name__ == "__main__":
+def listen(keywords):
     print("Listener started. Waiting for data...")
     plt.ion()  # interactive mode
     fig, ax = plt.subplots(figsize=(10, 6))
@@ -12,13 +12,10 @@ if __name__ == "__main__":
     ax.set_xlabel("Samples")
     ax.set_ylabel("Value")
     ax.grid(True)
-    datas = {
-        "value_a": [],
-        "value_b": [],
-    }
-    lines = {k: ax.plot([], [], label=k)[0] for k in datas.keys()}
+    datas = {k: [] for k in keywords}
+    lines = {k: ax.plot([], [], label=k)[0] for k in keywords}
     ax.legend()
-    find_vals = "|".join(datas.keys())
+    find_vals = "|".join(keywords)
     pattern = re.compile(rf"({find_vals}):([-+]?\d*\.?\d+)")
     try:
         for line in sys.stdin:
@@ -50,3 +47,9 @@ if __name__ == "__main__":
         # Keep the plot open after the stream ends
         plt.ioff()
         plt.show()
+
+
+if __name__ == "__main__":
+    listen(
+        keywords=["value_a", "value_b"],
+    )
