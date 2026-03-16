@@ -20,13 +20,13 @@ def listen(keywords):
     datas = {k: [] for k in keywords}
     lines = {k: ax.plot([], [], label=k)[0] for k in keywords}
     ax.legend()
-    find_vals = "|".join(keywords)
+    find_vals = "|".join(keywords).lower()
     # in regex allow spaces after val and separation by : or =
     pattern = re.compile(rf"({find_vals})\s*[:=]\s*([-+]?\d*\.?\d+)")
     try:
         for line in sys.stdin:
             print(line, end="", flush=True)
-            match = pattern.search(line)
+            match = pattern.search(line.lower())
             if not match:
                 # Still pause to keep the GUI responsive even if no match
                 plt.pause(0.01)
