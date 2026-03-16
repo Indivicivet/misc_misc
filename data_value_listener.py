@@ -17,7 +17,8 @@ def listen(keywords):
     lines = {k: ax.plot([], [], label=k)[0] for k in keywords}
     ax.legend()
     find_vals = "|".join(keywords)
-    pattern = re.compile(rf"({find_vals}):([-+]?\d*\.?\d+)")
+    # in regex allow spaces after val and separation by : or =
+    pattern = re.compile(rf"({find_vals})\s*[:=]\s*([-+]?\d*\.?\d+)")
     try:
         for line in sys.stdin:
             print(line, end="", flush=True)
