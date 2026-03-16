@@ -1,5 +1,5 @@
 """
-python your_script.py | python data_value_listener.py "current value"
+python your_script.py | python value_listener.py "current value"
 """
 
 import sys
