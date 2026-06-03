@@ -11,8 +11,10 @@ def solve_rotation_alignment(
     target: np.ndarray,
     max_iters=100,
     tolerance=1e-9,
-) -> np.ndarray:
+    return_history=False,
+) -> tuple[np.ndarray, list[np.ndarray]] | np.ndarray:
     rot = np.eye(3)
+    rot_history = [rot.copy()]
     for _ in range(max_iters):
         # Compute residuals: e_i - R * n_i (shape: 3x3, each column is a residual vector)
         residuals = (target - rot @ n).flatten(order="F")
@@ -52,10 +54,18 @@ def solve_rotation_alignment(
             + ((1.0 - np.cos(theta)) / (theta**2)) * (omega_hat @ omega_hat)
         )
         rot = rot @ exp_omega
+        rot_history.append(rot.copy())
+
+    if return_history:
+        return rot, rot_history
     return rot
 
 
-def plot_trivectors(*trivectors: np.ndarray) -> None:
+def plot_trivectors(
+    *trivectors: np.ndarray,
+    history: list[np.ndarray] | None = None,
+    n_inputs: np.ndarray | None = None,
+) -> None:
     if not trivectors:
         raise ValueError("No trivectors provided!")
     fig = plt.figure(figsize=(7 * len(trivectors), 7))
@@ -97,6 +107,28 @@ def plot_trivectors(*trivectors: np.ndarray) -> None:
                 label=f"Vector {i}",
             )
 
+        # Plot paths if history is provided
+        if idx > 0 and history is not None and n_inputs is not None:
+            for i in range(3):
+                path = np.array([R @ n_inputs[:, i] for R in history])
+                ax.plot(
+                    path[:, 0],
+                    path[:, 1],
+                    path[:, 2],
+                    color=colors_vec[i],
+                    linestyle=":",
+                    linewidth=2,
+                    alpha=0.8,
+                )
+                ax.scatter(
+                    path[:, 0],
+                    path[:, 1],
+                    path[:, 2],
+                    color=colors_vec[i],
+                    s=20,
+                    depthshade=False,
+                )
+
         ax.set_title(f"Trivector Set {idx + 1}", fontsize=14, fontweight="bold", pad=15)
         ax.set_xlim([-1.2, 1.2])
         ax.set_ylim([-1.2, 1.2])
@@ -116,8 +148,10 @@ if __name__ == "__main__":
     raw_vectors = np.random.randn(3, 3)
     n_inputs = raw_vectors / np.linalg.norm(raw_vectors, axis=0)
 
-    # Run optimization
-    R_opt = solve_rotation_alignment(n_inputs, target=np.eye(3))
+    # Run optimization with history tracking
+    R_opt, rot_history = solve_rotation_alignment(
+        n_inputs, target=np.eye(3), return_history=True
+    )
 
     print("Generated Vectors (n0, n1, n2):\n", n_inputs)
     print("\nOptimized Rotation Matrix R:\n", R_opt)
@@ -126,5 +160,5 @@ if __name__ == "__main__":
     result = R_opt @ n_inputs
     print("\nRotated Vectors (Should be close to Identity):\n", result)
 
-    plot_trivectors(n_inputs, result)
+    plot_trivectors(n_inputs, result, history=rot_history, n_inputs=n_inputs)
     plt.show()
