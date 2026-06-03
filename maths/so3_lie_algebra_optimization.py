@@ -9,12 +9,10 @@ import numpy as np
 def solve_rotation_alignment(
     n: np.ndarray,
     target: np.ndarray,
+    max_iters=100,
+    tolerance=1e-9,
 ) -> np.ndarray:
     rot = np.eye(3)
-
-    max_iters = 100
-    tolerance = 1e-9
-
     for _ in range(max_iters):
         # Compute residuals: e_i - R * n_i (shape: 3x3, each column is a residual vector)
         residuals = (target - rot @ n).flatten(order="F")
