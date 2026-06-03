@@ -77,7 +77,7 @@ def plot_trivectors(*trivectors: np.ndarray) -> None:
     zs = np.cos(v)
     for idx, trivector in enumerate(trivectors):
         ax = fig.add_subplot(1, len(trivectors), idx + 1, projection="3d")
-        ax.plot_wireframe(xs, ys, zs, color="gray", alpha=0.1, linewidth=0.5)
+        ax.plot_wireframe(xs, ys, zs, color="gray", alpha=0.4, linewidth=1)
         for i in range(3):
             # standard coordinates
             ax.quiver(
