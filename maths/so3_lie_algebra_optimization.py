@@ -37,8 +37,8 @@ def solve_rotation_alignment(n: np.ndarray) -> np.ndarray:
             )
             J[i * 3 : (i + 1) * 3, :] = R @ n_hat
 
-        # 3. Solve the Gauss-Newton normal equations: (J^T * J) * omega = J^T * r
-        omega = np.linalg.solve(J.T @ J, J.T @ r)
+        # 3. Solve the Gauss-Newton normal equations: (J^T * J) * omega = -J^T * r
+        omega = np.linalg.solve(J.T @ J, -J.T @ r)
 
         # 4. Retraction: Update R using Rodrigues' formula for exp(omega^)
         theta = np.linalg.norm(omega)
