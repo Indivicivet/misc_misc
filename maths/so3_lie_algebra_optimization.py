@@ -2,6 +2,7 @@
 solve (toy) problem on SO3 by lie algebra methods
 """
 
+import matplotlib.pyplot as plt
 import numpy as np
 
 
@@ -78,3 +79,114 @@ print("Generated Vectors (n0, n1, n2):\n", n_inputs)
 print("\nOptimized Rotation Matrix R:\n", R_opt)
 print("\nCheck Orthogonality (R^T * R):\n", R_opt.T @ R_opt)
 print("\nRotated Vectors (Should be close to Identity):\n", R_opt @ n_inputs)
+
+# --- 3D Visualization ---
+n_rotated = R_opt @ n_inputs
+
+fig = plt.figure(figsize=(14, 7))
+
+# Define colors and labels matching standard coordinate axes (X: Red, Y: Green, Z: Blue)
+colors_target = ["#ff7675", "#55efc4", "#74b9ff"]
+labels_target = [r"Target $\hat{x}$", r"Target $\hat{y}$", r"Target $\hat{z}$"]
+colors_vec = ["#d63031", "#00b894", "#0984e3"]
+labels_orig = [r"Original $n_0$", r"Original $n_1$", r"Original $n_2$"]
+labels_rot = [r"Rotated $n_0$", r"Rotated $n_1$", r"Rotated $n_2$"]
+
+# Faint unit sphere for 3D perspective context
+u, v = np.mgrid[0 : 2 * np.pi : 20j, 0 : np.pi : 10j]
+xs = np.cos(u) * np.sin(v)
+ys = np.sin(u) * np.sin(v)
+zs = np.cos(v)
+
+# 1. Left Plot: Original Vectors vs Targets
+ax1 = fig.add_subplot(121, projection="3d")
+ax1.plot_wireframe(xs, ys, zs, color="gray", alpha=0.1, linewidth=0.5)
+
+# Plot Targets (dashed)
+for i in range(3):
+    ax1.quiver(
+        0,
+        0,
+        0,
+        1 if i == 0 else 0,
+        1 if i == 1 else 0,
+        1 if i == 2 else 0,
+        color=colors_target[i],
+        linestyle="--",
+        linewidth=1.5,
+        alpha=0.6,
+        arrow_length_ratio=0.1,
+        label=labels_target[i],
+    )
+
+# Plot Original Vectors
+for i in range(3):
+    ax1.quiver(
+        0,
+        0,
+        0,
+        n_inputs[0, i],
+        n_inputs[1, i],
+        n_inputs[2, i],
+        color=colors_vec[i],
+        linewidth=2.5,
+        arrow_length_ratio=0.1,
+        label=labels_orig[i],
+    )
+
+ax1.set_title("Original Vectors vs. Targets", fontsize=14, fontweight="bold", pad=15)
+ax1.set_xlim([-1.2, 1.2])
+ax1.set_ylim([-1.2, 1.2])
+ax1.set_zlim([-1.2, 1.2])
+ax1.set_xlabel("X")
+ax1.set_ylabel("Y")
+ax1.set_zlabel("Z")
+ax1.legend(loc="upper left")
+
+# 2. Right Plot: Rotated Vectors vs Targets
+ax2 = fig.add_subplot(122, projection="3d")
+ax2.plot_wireframe(xs, ys, zs, color="gray", alpha=0.1, linewidth=0.5)
+
+# Plot Targets (dashed)
+for i in range(3):
+    ax2.quiver(
+        0,
+        0,
+        0,
+        1 if i == 0 else 0,
+        1 if i == 1 else 0,
+        1 if i == 2 else 0,
+        color=colors_target[i],
+        linestyle="--",
+        linewidth=1.5,
+        alpha=0.6,
+        arrow_length_ratio=0.1,
+        label=labels_target[i],
+    )
+
+# Plot Rotated Vectors
+for i in range(3):
+    ax2.quiver(
+        0,
+        0,
+        0,
+        n_rotated[0, i],
+        n_rotated[1, i],
+        n_rotated[2, i],
+        color=colors_vec[i],
+        linewidth=2.5,
+        arrow_length_ratio=0.1,
+        label=labels_rot[i],
+    )
+
+ax2.set_title("Rotated Vectors vs. Targets", fontsize=14, fontweight="bold", pad=15)
+ax2.set_xlim([-1.2, 1.2])
+ax2.set_ylim([-1.2, 1.2])
+ax2.set_zlim([-1.2, 1.2])
+ax2.set_xlabel("X")
+ax2.set_ylabel("Y")
+ax2.set_zlabel("Z")
+ax2.legend(loc="upper left")
+
+plt.tight_layout()
+plt.show()
