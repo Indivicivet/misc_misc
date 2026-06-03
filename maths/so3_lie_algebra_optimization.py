@@ -65,111 +65,56 @@ def solve_rotation_alignment(n: np.ndarray) -> np.ndarray:
     return R
 
 
-def plot_results(vectors0, vectors1):
-    fig = plt.figure(figsize=(14, 7))
-
-    # Define colors and labels matching standard coordinate axes (X: Red, Y: Green, Z: Blue)
+def plot_trivectors(*trivectors: np.ndarray) -> None:
+    if not trivectors:
+        raise ValueError("No trivectors provided!")
+    fig = plt.figure(figsize=(7 * len(trivectors), 7))
     colors_target = ["#ff7675", "#55efc4", "#74b9ff"]
-    labels_target = [r"Target $\hat{x}$", r"Target $\hat{y}$", r"Target $\hat{z}$"]
     colors_vec = ["#d63031", "#00b894", "#0984e3"]
-    labels_orig = [r"Original $n_0$", r"Original $n_1$", r"Original $n_2$"]
-    labels_rot = [r"Rotated $n_0$", r"Rotated $n_1$", r"Rotated $n_2$"]
-
-    # Faint unit sphere for 3D perspective context
-    u, v = np.mgrid[0: 2 * np.pi: 20j, 0: np.pi: 10j]
+    u, v = np.mgrid[0 : 2 * np.pi : 20j, 0 : np.pi : 10j]
     xs = np.cos(u) * np.sin(v)
     ys = np.sin(u) * np.sin(v)
     zs = np.cos(v)
+    for idx, trivector in enumerate(trivectors):
+        ax = fig.add_subplot(1, len(trivectors), idx + 1, projection="3d")
+        ax.plot_wireframe(xs, ys, zs, color="gray", alpha=0.1, linewidth=0.5)
+        for i in range(3):
+            # standard coordinates
+            ax.quiver(
+                0,
+                0,
+                0,
+                1 if i == 0 else 0,
+                1 if i == 1 else 0,
+                1 if i == 2 else 0,
+                color=colors_target[i],
+                linestyle="--",
+                linewidth=1.5,
+                alpha=0.6,
+                arrow_length_ratio=0.1,
+            )
+            # trivectors
+            ax.quiver(
+                0,
+                0,
+                0,
+                trivector[0, i],
+                trivector[1, i],
+                trivector[2, i],
+                color=colors_vec[i],
+                linewidth=2.5,
+                arrow_length_ratio=0.1,
+                label=f"Vector {i}",
+            )
 
-    # 1. Left Plot: Original Vectors vs Targets
-    ax1 = fig.add_subplot(121, projection="3d")
-    ax1.plot_wireframe(xs, ys, zs, color="gray", alpha=0.1, linewidth=0.5)
-
-    # Plot Targets (dashed)
-    for i in range(3):
-        ax1.quiver(
-            0,
-            0,
-            0,
-            1 if i == 0 else 0,
-            1 if i == 1 else 0,
-            1 if i == 2 else 0,
-            color=colors_target[i],
-            linestyle="--",
-            linewidth=1.5,
-            alpha=0.6,
-            arrow_length_ratio=0.1,
-            label=labels_target[i],
-        )
-
-    # Plot Original Vectors
-    for i in range(3):
-        ax1.quiver(
-            0,
-            0,
-            0,
-            vectors0[0, i],
-            vectors0[1, i],
-            vectors0[2, i],
-            color=colors_vec[i],
-            linewidth=2.5,
-            arrow_length_ratio=0.1,
-            label=labels_orig[i],
-        )
-
-    ax1.set_title("Original Vectors vs. Targets", fontsize=14, fontweight="bold", pad=15)
-    ax1.set_xlim([-1.2, 1.2])
-    ax1.set_ylim([-1.2, 1.2])
-    ax1.set_zlim([-1.2, 1.2])
-    ax1.set_xlabel("X")
-    ax1.set_ylabel("Y")
-    ax1.set_zlabel("Z")
-    ax1.legend(loc="upper left")
-
-    # 2. Right Plot: Rotated Vectors vs Targets
-    ax2 = fig.add_subplot(122, projection="3d")
-    ax2.plot_wireframe(xs, ys, zs, color="gray", alpha=0.1, linewidth=0.5)
-
-    # Plot Targets (dashed)
-    for i in range(3):
-        ax2.quiver(
-            0,
-            0,
-            0,
-            1 if i == 0 else 0,
-            1 if i == 1 else 0,
-            1 if i == 2 else 0,
-            color=colors_target[i],
-            linestyle="--",
-            linewidth=1.5,
-            alpha=0.6,
-            arrow_length_ratio=0.1,
-            label=labels_target[i],
-        )
-
-    # Plot Rotated Vectors
-    for i in range(3):
-        ax2.quiver(
-            0,
-            0,
-            0,
-            vectors1[0, i],
-            vectors1[1, i],
-            vectors1[2, i],
-            color=colors_vec[i],
-            linewidth=2.5,
-            arrow_length_ratio=0.1,
-            label=labels_rot[i],
-        )
-
-    ax2.set_title("Rotated Vectors vs. Targets", fontsize=14, fontweight="bold", pad=15)
-    ax2.set_xlim([-1.2, 1.2])
-    ax2.set_ylim([-1.2, 1.2])
-    ax2.set_zlim([-1.2, 1.2])
-    ax2.set_xlabel("X")
-    ax2.set_ylabel("Y")
-    ax2.set_zlabel("Z")
-    ax2.legend(loc="upper left")
+        ax.set_title(f"Trivector Set {idx + 1}", fontsize=14, fontweight="bold", pad=15)
+        ax.set_xlim([-1.2, 1.2])
+        ax.set_ylim([-1.2, 1.2])
+        ax.set_zlim([-1.2, 1.2])
+        ax.set_xlabel("X")
+        ax.set_ylabel("Y")
+        ax.set_zlabel("Z")
+        ax.legend(loc="upper left")
 
     plt.tight_layout()
     plt.show()
@@ -192,4 +137,4 @@ if __name__ == "__main__":
     result = R_opt @ n_inputs
     print("\nRotated Vectors (Should be close to Identity):\n", result)
 
-    plot_results(n_inputs, result)
+    plot_trivectors(n_inputs, result)
