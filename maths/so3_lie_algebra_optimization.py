@@ -106,9 +106,7 @@ def plot_trivectors(*trivectors: np.ndarray) -> None:
         ax.set_zlabel("Z")
         ax.set_aspect("equal")
         ax.legend(loc="upper left")
-
     plt.tight_layout()
-    plt.show()
 
 
 if __name__ == "__main__":
@@ -129,3 +127,4 @@ if __name__ == "__main__":
     print("\nRotated Vectors (Should be close to Identity):\n", result)
 
     plot_trivectors(n_inputs, result)
+    plt.show()
