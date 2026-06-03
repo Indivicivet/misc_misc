@@ -114,6 +114,7 @@ def plot_trivectors(*trivectors: np.ndarray) -> None:
         ax.set_xlabel("X")
         ax.set_ylabel("Y")
         ax.set_zlabel("Z")
+        ax.set_aspect("equal")
         ax.legend(loc="upper left")
 
     plt.tight_layout()
