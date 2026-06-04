@@ -1,6 +1,7 @@
 """
 solve (toy) problem on SO3 by lie algebra methods
 """
+from typing import Optional
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -61,14 +62,41 @@ def solve_rotation_alignment(
     return rot
 
 
+def rotation_matrix_to_vector(R: np.ndarray) -> np.ndarray:
+    """Map a 3x3 rotation matrix to its Lie algebra vector representation.
+
+    Uses the SO(3) logarithmic map.
+    """
+    tr = np.trace(R)
+    cos_theta = np.clip((tr - 1.0) / 2.0, -1.0, 1.0)
+    theta = np.arccos(cos_theta)
+    if np.abs(theta) < 1e-10:
+        return np.zeros(3)
+    if np.abs(theta - np.pi) < 1e-6:
+        # Find the axis from the symmetric part of R
+        v_sq = (R + np.eye(3)) / 2.0
+        i = np.argmax(np.diag(v_sq))
+        v = v_sq[:, i] / np.sqrt(v_sq[i, i])
+        return v * theta
+    return (theta / (2.0 * np.sin(theta))) * np.array(
+        [R[2, 1] - R[1, 2], R[0, 2] - R[2, 0], R[1, 0] - R[0, 1]]
+    )
+
+
 def plot_trivectors(
     *trivectors: np.ndarray,
-    history: list[np.ndarray] | None = None,
-    n_inputs: np.ndarray | None = None,
+    history: Optional[list[np.ndarray]] = None,
+    initial_vecs: Optional[np.ndarray] = None,
+    plot_lie_algebra: bool = True,
 ) -> None:
     if not trivectors:
         raise ValueError("No trivectors provided!")
-    fig = plt.figure(figsize=(7 * len(trivectors), 7))
+    if plot_lie_algebra and history is None:
+        raise ValueError("Need to provide history to plot lie algebra")
+    num_plots = len(trivectors)
+    if plot_lie_algebra:
+        num_plots += 1
+    fig = plt.figure(figsize=(7 * num_plots, 7))
     colors_target = ["#ff7675", "#55efc4", "#74b9ff"]
     colors_vec = ["#d63031", "#00b894", "#0984e3"]
     u, v = np.mgrid[0 : 2 * np.pi : 20j, 0 : np.pi : 10j]
@@ -76,7 +104,7 @@ def plot_trivectors(
     ys = np.sin(u) * np.sin(v)
     zs = np.cos(v)
     for idx, trivector in enumerate(trivectors):
-        ax = fig.add_subplot(1, len(trivectors), idx + 1, projection="3d")
+        ax = fig.add_subplot(1, num_plots, idx + 1, projection="3d")
         ax.plot_wireframe(xs, ys, zs, color="gray", alpha=0.4, linewidth=1)
         for i in range(3):
             # standard coordinates
@@ -108,9 +136,9 @@ def plot_trivectors(
             )
 
         # Plot paths if history is provided
-        if idx > 0 and history is not None and n_inputs is not None:
+        if idx > 0 and history is not None and initial_vecs is not None:
             for i in range(3):
-                path = np.array([R @ n_inputs[:, i] for R in history])
+                path = np.array([R @ initial_vecs[:, i] for R in history])
                 ax.plot(
                     path[:, 0],
                     path[:, 1],
@@ -138,6 +166,102 @@ def plot_trivectors(
         ax.set_zlabel("Z")
         ax.set_aspect("equal")
         ax.legend(loc="upper left")
+
+    if plot_lie_algebra:
+        ax = fig.add_subplot(1, num_plots, num_plots, projection="3d")
+        # Calculate Lie algebra representation for each rotation matrix in history
+        # todo :: maybe nicer if this were included in the history instead
+        lie_path = np.array([rotation_matrix_to_vector(R) for R in history])
+        ax.plot(
+            lie_path[:, 0],
+            lie_path[:, 1],
+            lie_path[:, 2],
+            color="#6c5ce7",
+            linestyle="-",
+            linewidth=2.5,
+            label="Optimization Path",
+        )
+        ax.scatter(
+            lie_path[:, 0],
+            lie_path[:, 1],
+            lie_path[:, 2],
+            color="#a29bfe",
+            s=30,
+            depthshade=False,
+            edgecolors="#6c5ce7",
+            linewidths=1.0,
+            label="Iterations",
+        )
+        ax.scatter(
+            [0],
+            [0],
+            [0],
+            color="#ff7675",
+            s=80,
+            marker="*",
+            depthshade=False,
+            edgecolors="black",
+            linewidths=1.0,
+            label="Start (Identity)",
+            zorder=10,
+        )
+        ax.scatter(
+            [lie_path[-1, 0]],
+            [lie_path[-1, 1]],
+            [lie_path[-1, 2]],
+            color="#55efc4",
+            s=80,
+            marker="D",
+            depthshade=False,
+            edgecolors="black",
+            linewidths=1.0,
+            label="Final Rotation",
+            zorder=10,
+        )
+        # Draw coordinate axes through the origin
+        max_val = np.max(np.abs(lie_path))
+        axis_limit = max(max_val * 1.2, 0.5)
+        ax.plot(
+            [-axis_limit, axis_limit],
+            [0, 0],
+            [0, 0],
+            color="black",
+            linestyle="--",
+            alpha=0.3,
+            linewidth=1,
+        )
+        ax.plot(
+            [0, 0],
+            [-axis_limit, axis_limit],
+            [0, 0],
+            color="black",
+            linestyle="--",
+            alpha=0.3,
+            linewidth=1,
+        )
+        ax.plot(
+            [0, 0],
+            [0, 0],
+            [-axis_limit, axis_limit],
+            color="black",
+            linestyle="--",
+            alpha=0.3,
+            linewidth=1,
+        )
+        ax.set_title(
+            "Path in Lie Algebra $\\mathfrak{so}(3)$",
+            fontsize=14,
+            fontweight="bold",
+            pad=15,
+        )
+        ax.set_xlabel("$\\omega_x$ (rad)")
+        ax.set_ylabel("$\\omega_y$ (rad)")
+        ax.set_zlabel("$\\omega_z$ (rad)")
+        ax.set_xlim([-axis_limit, axis_limit])
+        ax.set_ylim([-axis_limit, axis_limit])
+        ax.set_zlim([-axis_limit, axis_limit])
+        ax.set_aspect("equal")
+        ax.legend(loc="upper left")
     plt.tight_layout()
 
 
@@ -146,19 +270,26 @@ if __name__ == "__main__":
 
     # Generate 3 random normalized vectors (not orthogonal)
     raw_vectors = np.random.randn(3, 3)
-    n_inputs = raw_vectors / np.linalg.norm(raw_vectors, axis=0)
+    random_unit_vecs = raw_vectors / np.linalg.norm(raw_vectors, axis=0)
 
     # Run optimization with history tracking
     R_opt, rot_history = solve_rotation_alignment(
-        n_inputs, target=np.eye(3), return_history=True
+        random_unit_vecs,
+        target=np.eye(3),
+        return_history=True,
     )
 
-    print("Generated Vectors (n0, n1, n2):\n", n_inputs)
+    print("Generated Vectors (n0, n1, n2):\n", random_unit_vecs)
     print("\nOptimized Rotation Matrix R:\n", R_opt)
     print("\nCheck Orthogonality (R^T * R):\n", R_opt.T @ R_opt)
 
-    result = R_opt @ n_inputs
+    result = R_opt @ random_unit_vecs
     print("\nRotated Vectors (Should be close to Identity):\n", result)
 
-    plot_trivectors(n_inputs, result, history=rot_history, n_inputs=n_inputs)
+    plot_trivectors(
+        random_unit_vecs,
+        result,
+        history=rot_history,
+        initial_vecs=random_unit_vecs,
+    )
     plt.show()
