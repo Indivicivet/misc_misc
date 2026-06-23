@@ -20,6 +20,7 @@ import numpy as np
 def print_arr(arr):
     print(f"shape {arr.shape}")
     print(f"dtype {arr.dtype}")
+    print(f"min {arr.min()} max {arr.max()}")
     print(f"hash {hashlib.sha256(arr.tobytes()).hexdigest()[:20]}")
     print()
     with np.printoptions(
