@@ -19,7 +19,11 @@ import numpy as np
 def print_arr(arr):
     print(f"shape {arr.shape}")
     print(f"dtype {arr.dtype}")
-    with np.printoptions(threshold=10_000, linewidth=120):
+    with np.printoptions(
+        threshold=10_000,  # truncate if >this many elems
+        edgeitems=16,  # rows and columns for truncated
+        linewidth=160,
+    ):
         print(arr)
 
 
