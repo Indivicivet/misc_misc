@@ -11,14 +11,17 @@ or get path via
 git config --global core.attributesFile
 """
 
-
 import sys
+import hashlib
+
 import numpy as np
 
 
 def print_arr(arr):
     print(f"shape {arr.shape}")
     print(f"dtype {arr.dtype}")
+    print(f"hash {hashlib.sha256(arr.tobytes()).hexdigest()[:20]}")
+    print()
     with np.printoptions(
         threshold=10_000,  # truncate if >this many elems
         edgeitems=16,  # rows and columns for truncated
