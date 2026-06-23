@@ -1,3 +1,17 @@
+"""
+.npy to text intended for diffing .npy files
+
+git config --global diff.np_to_txt.textconv "py <path to>\np_to_txt.py"
+
+add to gitattributes:
+*.npy diff=np_to_txt
+e.g.
+%USERPROFILE%\.config\git\attributes
+or get path via
+git config --global core.attributesFile
+"""
+
+
 import sys
 import numpy as np
 
