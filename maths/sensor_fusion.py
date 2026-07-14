@@ -1,5 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
+import itertools
+from tqdm import tqdm
 from dataclasses import dataclass
 
 
@@ -300,5 +302,116 @@ def single_sim_plot():
     plt.show()
 
 
+def plot_many_sims():
+    sigma_p_vals = [0.5, 1.0, 2.0, 4.0, 8.0]
+    sigma_a_vals = [0.1, 0.2, 0.5, 1.0, 2.0]
+    n_steps_vals = [5, 10, 20, 40]
+
+    grid = list(itertools.product(sigma_p_vals, sigma_a_vals, n_steps_vals))
+
+    results = []
+
+    # Run parameter sweep
+    for sigma_p, sigma_a, n_steps in tqdm(grid, desc="Running Parameter Sweep"):
+        algorithms = [KalmanFilter(), ComplementaryFilter()]
+        res = run_simulation(
+            algorithms=algorithms,
+            sigma_p=sigma_p,
+            sigma_a=sigma_a,
+            n_steps=n_steps,
+            num_cycles=200,
+        )
+
+        for f_res in res.filter_results:
+            mean_mse = np.mean(f_res.errors[50:, :] ** 2)
+            results.append(
+                {
+                    "filter_name": f_res.name,
+                    "sigma_p": sigma_p,
+                    "sigma_a": sigma_a,
+                    "n_steps": n_steps,
+                    "mean_error": mean_mse,
+                }
+            )
+
+    # Plotting
+    plt.figure(figsize=(18, 5))
+
+    params = [
+        ("sigma_p", "Position Sensor Noise Std (sigma_p)"),
+        ("sigma_a", "Accelerometer Noise Std (sigma_a)"),
+        ("n_steps", "Update Ratio (n_steps)"),
+    ]
+
+    colors = {"Kalman Filter": "b", "Complementary Filter": "r"}
+
+    for i, (param_key, param_label) in enumerate(params):
+        plt.subplot(1, 3, i + 1)
+        for f_name, color in colors.items():
+            x_data = [r[param_key] for r in results if r["filter_name"] == f_name]
+            y_data = [r["mean_error"] for r in results if r["filter_name"] == f_name]
+
+            # Scatter plot of all raw data points
+            plt.scatter(x_data, y_data, c=color, alpha=0.3, label=f_name)
+
+            # --- Calculate true theoretical marginal mean curve ---
+            if param_key == "sigma_p":
+                dense_x = np.linspace(min(sigma_p_vals), max(sigma_p_vals), 50)
+            elif param_key == "sigma_a":
+                dense_x = np.linspace(min(sigma_a_vals), max(sigma_a_vals), 50)
+            elif param_key == "n_steps":
+                dense_x = np.arange(min(n_steps_vals), max(n_steps_vals) + 1)
+
+            y_theoretical = []
+            for x_val in dense_x:
+                marginal_sum = 0
+                count = 0
+
+                iter_sigma_p = [x_val] if param_key == "sigma_p" else sigma_p_vals
+                iter_sigma_a = [x_val] if param_key == "sigma_a" else sigma_a_vals
+                iter_n_steps = [int(x_val)] if param_key == "n_steps" else n_steps_vals
+
+                for sp in iter_sigma_p:
+                    for sa in iter_sigma_a:
+                        for n in iter_n_steps:
+                            # Reconstruct physical system for this specific grid point
+                            dt = 0.01
+                            f_mat = np.array([[1, dt], [0, 1]])
+                            b_mat = np.array([[0.5 * dt**2], [dt]])
+                            h_mat = np.array([[1, 0]])
+                            q_mat = (sa**2) * (b_mat @ b_mat.T)
+                            r_mat = np.array([[sp**2]])
+
+                            algo = (
+                                KalmanFilter()
+                                if "Kalman" in f_name
+                                else ComplementaryFilter()
+                            )
+                            theo_cycle = algo.compute_theoretical_limit_cycle(
+                                f_mat, q_mat, h_mat, r_mat, n
+                            )
+                            marginal_sum += np.mean(theo_cycle)
+                            count += 1
+
+                y_theoretical.append(marginal_sum / count)
+
+            plt.plot(
+                dense_x,
+                y_theoretical,
+                c=color,
+                linewidth=2,
+                label=f"{f_name} Theoretical",
+            )
+
+        plt.xlabel(param_label)
+        plt.ylabel("Mean Squared Error (MSE)")
+        plt.title(f"Error vs {param_key}")
+        plt.legend()
+        plt.grid(True)
+
+    plt.tight_layout()
+    plt.show()
+
+
 if __name__ == "__main__":
-    single_sim_plot()
+    plot_many_sims()
