@@ -199,7 +199,7 @@ def run_simulation(
     )
 
 
-if __name__ == "__main__":
+def single_sim_plot():
     res = run_simulation()
 
     # Plotting
@@ -298,3 +298,7 @@ if __name__ == "__main__":
 
     plt.tight_layout()
     plt.show()
+
+
+if __name__ == "__main__":
+    single_sim_plot()
