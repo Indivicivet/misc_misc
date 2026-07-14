@@ -335,79 +335,101 @@ def plot_many_sims():
             )
 
     # Plotting
-    plt.figure(figsize=(18, 5))
+    fig, axes = plt.subplots(2, 3, figsize=(18, 10))
 
     params = [
         ("sigma_p", "Position Sensor Noise Std (sigma_p)"),
         ("sigma_a", "Accelerometer Noise Std (sigma_a)"),
         ("n_steps", "Update Ratio (n_steps)"),
     ]
+    filters = ["Kalman Filter", "Complementary Filter"]
 
-    colors = {"Kalman Filter": "b", "Complementary Filter": "r"}
+    import matplotlib.cm as cm
 
-    for i, (param_key, param_label) in enumerate(params):
-        plt.subplot(1, 3, i + 1)
-        for f_name, color in colors.items():
-            x_data = [r[param_key] for r in results if r["filter_name"] == f_name]
-            y_data = [r["mean_error"] for r in results if r["filter_name"] == f_name]
+    for row, f_name in enumerate(filters):
+        for col, (param_key, param_label) in enumerate(params):
+            ax = axes[row, col]
 
-            # Scatter plot of all raw data points
-            plt.scatter(x_data, y_data, c=color, alpha=0.3, label=f_name)
-
-            # --- Calculate true theoretical marginal mean curve ---
-            if param_key == "sigma_p":
-                dense_x = np.linspace(min(sigma_p_vals), max(sigma_p_vals), 50)
-            elif param_key == "sigma_a":
-                dense_x = np.linspace(min(sigma_a_vals), max(sigma_a_vals), 50)
-            elif param_key == "n_steps":
-                dense_x = np.arange(min(n_steps_vals), max(n_steps_vals) + 1)
-
-            y_theoretical = []
-            for x_val in dense_x:
-                marginal_sum = 0
-                count = 0
-
-                iter_sigma_p = [x_val] if param_key == "sigma_p" else sigma_p_vals
-                iter_sigma_a = [x_val] if param_key == "sigma_a" else sigma_a_vals
-                iter_n_steps = [int(x_val)] if param_key == "n_steps" else n_steps_vals
-
-                for sp in iter_sigma_p:
-                    for sa in iter_sigma_a:
-                        for n in iter_n_steps:
-                            # Reconstruct physical system for this specific grid point
-                            dt = 0.01
-                            f_mat = np.array([[1, dt], [0, 1]])
-                            b_mat = np.array([[0.5 * dt**2], [dt]])
-                            h_mat = np.array([[1, 0]])
-                            q_mat = (sa**2) * (b_mat @ b_mat.T)
-                            r_mat = np.array([[sp**2]])
-
-                            algo = (
-                                KalmanFilter()
-                                if "Kalman" in f_name
-                                else ComplementaryFilter()
-                            )
-                            theo_cycle = algo.compute_theoretical_limit_cycle(
-                                f_mat, q_mat, h_mat, r_mat, n
-                            )
-                            marginal_sum += np.mean(theo_cycle)
-                            count += 1
-
-                y_theoretical.append(marginal_sum / count)
-
-            plt.plot(
-                dense_x,
-                y_theoretical,
-                c=color,
-                linewidth=2,
-                label=f"{f_name} Theoretical",
+            other_keys = [k for k, _ in params if k != param_key]
+            algo_res = [r for r in results if r["filter_name"] == f_name]
+            other_combos = sorted(
+                list(set((r[other_keys[0]], r[other_keys[1]]) for r in algo_res))
             )
 
-        plt.xlabel(param_label)
-        plt.ylabel("Mean Squared Error (MSE)")
-        plt.title(f"Error vs {param_key}")
-        plt.legend()
-        plt.grid(True)
+            colors = cm.viridis(np.linspace(0, 1, len(other_combos)))
+
+            for combo, color in tqdm(
+                list(zip(other_combos, colors)),
+                desc=f"Plotting {f_name} vs {param_key}",
+            ):
+                subset = [
+                    r
+                    for r in algo_res
+                    if r[other_keys[0]] == combo[0] and r[other_keys[1]] == combo[1]
+                ]
+                subset.sort(key=lambda r: r[param_key])
+
+                x_data = [r[param_key] for r in subset]
+                y_data = [r["mean_error"] for r in subset]
+
+                # Plot empirical data purely as disconnected scatter points
+                ax.scatter(x_data, y_data, marker="o", s=20, color=color, alpha=0.5)
+
+                # --- Calculate pure theoretical smooth curve ---
+                if param_key == "n_steps":
+                    dense_x = np.arange(min(x_data), max(x_data) + 1)
+                else:
+                    dense_x = np.linspace(min(x_data), max(x_data), 50)
+
+                y_theo = []
+                algo = KalmanFilter() if "Kalman" in f_name else ComplementaryFilter()
+
+                for x_val in dense_x:
+                    sp = (
+                        x_val
+                        if param_key == "sigma_p"
+                        else combo[0] if other_keys.index("sigma_p") == 0 else combo[1]
+                    )
+                    sa = (
+                        x_val
+                        if param_key == "sigma_a"
+                        else combo[0] if other_keys.index("sigma_a") == 0 else combo[1]
+                    )
+                    n = (
+                        int(x_val)
+                        if param_key == "n_steps"
+                        else int(
+                            combo[0] if other_keys.index("n_steps") == 0 else combo[1]
+                        )
+                    )
+
+                    dt = 0.01
+                    f_mat = np.array([[1, dt], [0, 1]])
+                    b_mat = np.array([[0.5 * dt**2], [dt]])
+                    h_mat = np.array([[1, 0]])
+                    q_mat = (sa**2) * (b_mat @ b_mat.T)
+                    r_mat = np.array([[sp**2]])
+
+                    algo.reset()
+                    if isinstance(algo, ComplementaryFilter):
+                        algo.k_gain = None
+
+                    theo_cycle = algo.compute_theoretical_limit_cycle(
+                        f_mat, q_mat, h_mat, r_mat, n
+                    )
+                    y_theo.append(np.mean(theo_cycle))
+
+                # Draw the theoretical expectation line
+                ax.plot(dense_x, y_theo, color=color, linewidth=1.5, alpha=0.9)
+
+            ax.set_xlabel(param_label)
+            if col == 0:
+                ax.set_ylabel(f"MSE ({f_name})")
+            if row == 0:
+                ax.set_title(f"Error vs {param_key}")
+
+            ax.set_yscale("log")
+            ax.grid(True)
 
     plt.tight_layout()
     plt.show()
