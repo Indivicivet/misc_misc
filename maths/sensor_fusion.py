@@ -1,6 +1,8 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import itertools
+
+import scipy
 from tqdm import tqdm
 from dataclasses import dataclass
 
@@ -93,25 +95,31 @@ class ComplementaryFilter:
         if self.k_gain is None:
             self.k_gain = k_opt * 0.3
 
-        p_cf = np.eye(2)
-        for _ in range(100):
-            for _ in range(n_steps):
-                p_cf = f_mat @ p_cf @ f_mat.T + q_mat
-            i_kh = np.eye(2) - self.k_gain @ h_mat
-            p_cf = i_kh @ p_cf @ i_kh.T + self.k_gain @ r_mat @ self.k_gain.T
+        q_sum = np.zeros((2, 2))
+        f_pow = np.eye(2)
+        for _ in range(n_steps):
+            q_sum += f_pow @ q_mat @ f_pow.T
+            f_pow = f_mat @ f_pow
 
+        i_kh = np.eye(2) - self.k_gain @ h_mat
+        a_cl = i_kh @ f_pow
+        w_mat = i_kh @ q_sum @ i_kh.T + self.k_gain @ r_mat @ self.k_gain.T
+
+        try:
+            # Solve exact discrete Lyapunov equation P = A P A^T + W for infinite horizon
+            p_post_update = scipy.linalg.solve_discrete_lyapunov(a_cl, w_mat)
+        except ValueError:
+            # Unstable closed loop
+            return [np.nan] * n_steps
+
+        # Generate cycle from exact steady-state
+        p_cf = p_post_update.copy()
         cycle = []
         for _ in range(n_steps - 1):
             p_cf = f_mat @ p_cf @ f_mat.T + q_mat
             cycle.append(p_cf.copy())
 
-        p_cf = f_mat @ p_cf @ f_mat.T + q_mat
-        cycle.append(p_cf.copy())
-
-        i_kh = np.eye(2) - self.k_gain @ h_mat
-        p_post_update = i_kh @ p_cf @ i_kh.T + self.k_gain @ r_mat @ self.k_gain.T
-
-        cycle_plot = cycle[:-1] + [p_post_update]
+        cycle_plot = cycle + [p_post_update.copy()]
         return [p[0, 0] for p in cycle_plot]
 
     def predict(self, u_in, f_mat, b_mat, q_mat):
