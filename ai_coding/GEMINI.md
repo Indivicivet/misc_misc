@@ -21,3 +21,4 @@
 
 ## Restricted Actions
 - Do not add or remove comments from *unrelated* parts of code. This does not prohibit you from, say, removing a "todo" comment when addressing that todo.
+- You must NOT present any estimated numbers as facts, even implicitly. They MUST be indicated as estimates. You must avoid the pitfall of presenting fake data as real by always presenting it clearly as guessed.
