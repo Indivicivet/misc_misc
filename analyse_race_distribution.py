@@ -72,14 +72,37 @@ def get_age_group_marker(age_category_str: str) -> tuple[str, str]:
     return "o", "Open / Other"
 
 
+def parse_cutoff_time(cutoff_str: str) -> float:
+    raw = str(cutoff_str).strip().lower()
+    if raw.endswith(("h", "hr", "hrs", "hour", "hours")):
+        val = re.sub(r"[^\d.]", "", raw)
+        return float(val) * 3600
+    if raw.endswith(("m", "min", "mins", "minute", "minutes")):
+        val = re.sub(r"[^\d.]", "", raw)
+        return float(val) * 60
+    if raw.endswith(("s", "sec", "secs", "second", "seconds")):
+        val = re.sub(r"[^\d.]", "", raw)
+        return float(val)
+    if ":" in raw:
+        parts = [float(p) for p in raw.split(":")]
+        if len(parts) == 3:
+            return parts[0] * 3600 + parts[1] * 60 + parts[2]
+        if len(parts) == 2:
+            return parts[0] * 60 + parts[1]
+    return float(raw)
+
+
 def plot_race_analysis(
     df: pd.DataFrame,
     title: str = "Race Distribution Analysis",
     bw_factor: float = 0.18,
+    cutoff_seconds: float = None,
 ):
     df = df.dropna(subset=["place", "finish_seconds"]).copy()
     df["place"] = pd.to_numeric(df["place"], errors="coerce")
     df["finish_seconds"] = pd.to_numeric(df["finish_seconds"], errors="coerce")
+    if cutoff_seconds is not None:
+        df = df[df["finish_seconds"] <= cutoff_seconds]
     df = df.sort_values("place")
 
     gender_colors = {
@@ -299,6 +322,12 @@ def main():
         help="KDE bandwidth factor (default: 0.18)",
     )
     parser.add_argument(
+        "--cutoff-time",
+        "-c",
+        default=None,
+        help="Cutoff time to filter finishers (e.g. '3h', '90m', '03:00:00')",
+    )
+    parser.add_argument(
         "--show", action="store_true", help="Display plot interactively"
     )
     args = parser.parse_args()
@@ -307,11 +336,14 @@ def main():
     if not csv_file.exists():
         raise FileNotFoundError(f"CSV file not found: {csv_file}")
 
+    cutoff_seconds = parse_cutoff_time(args.cutoff_time) if args.cutoff_time else None
+
     df = pd.read_csv(csv_file)
     fig = plot_race_analysis(
         df,
         title=f"Race Results Distribution: {csv_file.stem}",
         bw_factor=args.bandwidth,
+        cutoff_seconds=cutoff_seconds,
     )
 
     if args.output:
