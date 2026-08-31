@@ -128,6 +128,7 @@ def plot_race_analysis(
         "Finishing Position vs Finish Time", fontsize=13, fontweight="bold"
     )
     ax_pos.yaxis.set_major_formatter(ticker.FuncFormatter(format_seconds_to_mmss))
+    ax_pos.invert_yaxis()
     ax_pos.grid(True, linestyle=":", alpha=0.6)
 
     gender_handles = [
@@ -156,12 +157,12 @@ def plot_race_analysis(
     ]
 
     gender_legend = ax_pos.legend(
-        handles=gender_handles, loc="upper left", title="Gender", framealpha=0.9
+        handles=gender_handles, loc="upper right", title="Gender", framealpha=0.9
     )
     ax_pos.add_artist(gender_legend)
     ax_pos.legend(
         handles=marker_handles,
-        loc="lower right",
+        loc="lower left",
         title="Age Category",
         framealpha=0.9,
     )
