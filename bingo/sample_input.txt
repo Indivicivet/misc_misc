@@ -1,5 +1,5 @@
-Mark squares as they happen during the session.
-Get 5 in a row horizontally, vertically, or diagonally to call BINGO!
+Rules: Horizontal, vertical, or diagonal = LINE
+Two intersecting LINES = BINGO
 
 Someone forgets to unmute
 Awkward silence after a joke
