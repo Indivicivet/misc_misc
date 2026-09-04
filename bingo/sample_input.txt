@@ -1,0 +1,33 @@
+Mark squares as they happen during the session.
+Get 5 in a row horizontally, vertically, or diagonally to call BINGO!
+
+Someone forgets to unmute
+Awkward silence after a joke
+Can everyone see my screen?
+Slide deck fails to load
+Loud typing in the background
+Dog barks or pet appears on camera
+Let us take this offline
+You are cutting out, can you repeat that?
+Sorry, go ahead (both talking at once)
+Someone is clearly multitasking
+Heavy breathing directly into the microphone
+Child or family member walks into frame
+Echo or feedback loop starts buzzing
+Link in the chat is broken or needs access
+Someone forgot what they were going to say
+I was having connection issues
+Can you make me a co-host?
+Screen share shows personal notifications
+Let us give people another two minutes to join
+Someone says synergy or paradigm shift
+Virtual background glitches around someone's head
+Can everyone please mute if not speaking?
+Next slide please (said 5+ times)
+Someone is talking while muted for 30+ seconds
+I will send the recording afterwards
+Quick question that turns into a 20-minute debate
+Audio cuts out at the most critical sentence
+Someone is joining from an airport or car
+Surprise guest presenter joins the call
+We are running over time
