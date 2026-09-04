@@ -114,7 +114,7 @@ def build_html(
     pages_html = []
     card_counter = 1
 
-    for page_idx, page_cards in enumerate(pages, start=1):
+    for page_cards in pages:
         cards_markup = []
         for card_cells in page_cards:
             cells_html = []
@@ -161,16 +161,7 @@ def build_html(
             )
             card_counter += 1
 
-        cut_guide = (
-            '<div class="cut-line"><span>✂ cut here</span></div>'
-            if len(cards_markup) > 1
-            else ""
-        )
-        card_content = (
-            cards_markup[0]
-            if len(cards_markup) == 1
-            else f"{cards_markup[0]}\n{cut_guide}\n{cards_markup[1]}"
-        )
+        card_content = "\n".join(cards_markup)
         pages_html.append(
             f'<div class="a4-page cards-per-page-{cards_per_page}">{card_content}</div>'
         )
@@ -221,20 +212,20 @@ def build_html(
       width: 100%;
       display: flex;
       flex-direction: column;
-      padding: 3mm;
+      padding: 2mm 3mm;
     }}
     .cards-per-page-1 .bingo-card {{
       height: 100%;
-      padding: 5mm;
+      padding: 4mm 5mm;
     }}
     .cards-per-page-2 .bingo-card {{
-      height: 133mm;
+      height: 139mm;
     }}
     .card-header {{
       display: flex;
       justify-content: space-between;
       align-items: flex-start;
-      margin-bottom: 2.5mm;
+      margin-bottom: 2mm;
       gap: 3mm;
     }}
     .header-left {{
@@ -257,7 +248,7 @@ def build_html(
       color: #2b2b2b;
     }}
     .cards-per-page-1 .card-comments {{
-      font-size: 11pt;
+      font-size: 11.5pt;
       line-height: 1.35;
       margin-bottom: 2mm;
     }}
@@ -275,23 +266,6 @@ def build_html(
       font-size: 9.5pt;
       padding: 2px 8px;
     }}
-    .cut-line {{
-      height: 0;
-      border-top: 1px dashed #999;
-      margin: 0;
-      position: relative;
-      text-align: center;
-    }}
-    .cut-line span {{
-      position: absolute;
-      top: -9px;
-      left: 50%;
-      transform: translateX(-50%);
-      background: #fff;
-      padding: 0 8px;
-      font-size: 7.5pt;
-      color: #777;
-    }}
     .grid-container {{
       width: 100%;
       display: grid;
@@ -303,12 +277,12 @@ def build_html(
       margin: 0 auto;
     }}
     .cards-per-page-2 .grid-container {{
-      max-height: 112mm;
-      max-width: 112mm;
+      max-height: 122mm;
+      max-width: 122mm;
     }}
     .cards-per-page-1 .grid-container {{
-      max-height: 228mm;
-      max-width: 228mm;
+      max-height: 242mm;
+      max-width: 190mm;
     }}
     .grid-cell {{
       background: #fff;
@@ -329,15 +303,15 @@ def build_html(
       word-break: break-word;
       overflow: hidden;
     }}
-    .cards-per-page-2 .len-short {{ font-size: 9.5pt; font-weight: 600; line-height: 1.15; }}
-    .cards-per-page-2 .len-medium {{ font-size: 8pt; font-weight: 500; line-height: 1.15; }}
-    .cards-per-page-2 .len-long {{ font-size: 7pt; line-height: 1.1; }}
-    .cards-per-page-2 .len-xlong {{ font-size: 6.2pt; line-height: 1.05; }}
+    .cards-per-page-2 .len-short {{ font-size: 10.5pt; font-weight: 600; line-height: 1.15; }}
+    .cards-per-page-2 .len-medium {{ font-size: 9pt; font-weight: 500; line-height: 1.15; }}
+    .cards-per-page-2 .len-long {{ font-size: 7.8pt; line-height: 1.1; }}
+    .cards-per-page-2 .len-xlong {{ font-size: 6.8pt; line-height: 1.05; }}
 
-    .cards-per-page-1 .len-short {{ font-size: 15pt; font-weight: 600; line-height: 1.2; }}
-    .cards-per-page-1 .len-medium {{ font-size: 12.5pt; font-weight: 500; line-height: 1.2; }}
-    .cards-per-page-1 .len-long {{ font-size: 10.5pt; line-height: 1.15; }}
-    .cards-per-page-1 .len-xlong {{ font-size: 9pt; line-height: 1.1; }}
+    .cards-per-page-1 .len-short {{ font-size: 16.5pt; font-weight: 600; line-height: 1.2; }}
+    .cards-per-page-1 .len-medium {{ font-size: 13.5pt; font-weight: 500; line-height: 1.2; }}
+    .cards-per-page-1 .len-long {{ font-size: 11.5pt; line-height: 1.15; }}
+    .cards-per-page-1 .len-xlong {{ font-size: 9.5pt; line-height: 1.1; }}
 
     .cell-free {{
       background-color: #fcfcfc;
@@ -351,11 +325,11 @@ def build_html(
       align-items: center;
       justify-content: center;
       font-weight: 800;
-      font-size: 11pt;
+      font-size: 13pt;
       letter-spacing: 1px;
     }}
     .cards-per-page-1 .free-circle {{
-      font-size: 20pt;
+      font-size: 22pt;
       border-width: 3px;
     }}
 
