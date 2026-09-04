@@ -222,14 +222,17 @@ def build_html(
       height: 139mm;
     }}
     .card-header {{
+      position: relative;
       display: flex;
-      justify-content: space-between;
-      align-items: flex-start;
+      justify-content: center;
+      align-items: center;
       margin-bottom: 2mm;
-      gap: 3mm;
+      text-align: center;
     }}
     .header-left {{
-      flex: 1;
+      width: 100%;
+      text-align: center;
+      padding: 0 20px;
     }}
     .card-title {{
       font-size: 14pt;
@@ -238,6 +241,7 @@ def build_html(
       margin-bottom: 1.5mm;
       text-transform: uppercase;
       letter-spacing: 0.5px;
+      text-align: center;
     }}
     .cards-per-page-1 .card-title {{
       font-size: 18pt;
@@ -246,13 +250,18 @@ def build_html(
       font-size: 8.5pt;
       line-height: 1.25;
       color: #2b2b2b;
+      text-align: center;
     }}
     .cards-per-page-1 .card-comments {{
       font-size: 11.5pt;
       line-height: 1.35;
       margin-bottom: 2mm;
+      text-align: center;
     }}
     .card-badge {{
+      position: absolute;
+      top: 0;
+      right: 0;
       font-size: 8pt;
       font-weight: 700;
       color: #666;
