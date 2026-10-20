@@ -1,4 +1,10 @@
-"""Physics-based contact packing and deformable shape simulation for a 360-degree banana ring."""
+"""Physics-based contact packing and deformable shape simulation for a 360-degree banana ring.
+
+Botanical principles:
+- Ground state of Musa ovary: 3-sided (tricarpellary / trilocular symmetry, 120 deg apart).
+- Compression & packing against stem and neighbors creates secondary contact facets,
+  transforming 3-sided fruits into 4- or 5-sided cross-sections.
+"""
 
 import math
 from typing import List, Tuple
@@ -12,15 +18,14 @@ def relax_packing_energy(
     stem_radius: float,
     banana_radius: float,
     n_iterations: int = 300,
-    compression: float = 0.92,
+    compression: float = 0.90,
     seed: int = 42,
 ) -> Tuple[np.ndarray, np.ndarray]:
     """Energy minimization with simulated jiggle to densely pack the bananas.
 
-    Simulates physical inward centripetal pressure and repulsive elastic contact:
-    - Inner bananas are pressed against the stem and compressed laterally against each other.
-    - Outer bananas are pulled radially inward, settling into the interstitial valleys
-      between inner bananas and compressing laterally against adjacent outer bananas.
+    Dynamically adapts to any number of inner and outer bananas:
+    - Inner bananas press against the central stem and neighbors.
+    - Outer bananas are pulled radially inward, settling into valleys between inner bananas.
     """
     rng = np.random.default_rng(seed)
     n_in = len(inner_centers)
@@ -29,8 +34,8 @@ def relax_packing_energy(
     pos_in = np.copy(inner_centers)
     pos_out = np.copy(outer_centers)
 
-    stem_overlap = 7.5 * compression
-    inter_banana_overlap = 6.2 * compression
+    stem_overlap = 7.0 * compression
+    inter_banana_overlap = 6.0 * compression
 
     target_d_stem = stem_radius + banana_radius - stem_overlap
     target_d_pair = 2.0 * banana_radius - inter_banana_overlap
@@ -47,7 +52,7 @@ def relax_packing_energy(
         forces_in = np.zeros_like(pos_in)
         forces_out = np.zeros_like(pos_out)
 
-        # 1. Inner bananas: Stem contact force & inward pressure
+        # 1. Inner bananas: Stem contact force & radial placement
         for i in range(n_in):
             v_stem = pos_in[i] - stem_center
             d_stem = np.linalg.norm(v_stem)
@@ -121,23 +126,34 @@ def compute_contact_shape(
     stem_center: np.ndarray,
     stem_radius: float,
     neighbor_centers: List[np.ndarray],
-    compression: float = 0.92,
-    corner_fillet: float = 2.2,
+    locule_orientation: float,
+    compression: float = 0.90,
+    corner_fillet: float = 2.0,
     n_samples: int = 360,
     seed: int = 0,
 ) -> Tuple[np.ndarray, List[int], np.ndarray, int]:
-    """Compute the true contact-flattened cross-section of a banana pressed into neighbors and stem."""
+    """Compute cross-section deformed from the fundamental 3-sided ovary.
+
+    - Ground state (compression = 0): exactly 3-sided (triangular/trilocular syncarpous ovary).
+    - As compression increases and physical contact with stem/neighbors occurs,
+      contact planes clip and flatten faces, producing 4 or 5 sides.
+    - Accurately detects and returns the real rib vertices and side count.
+    """
     rng = np.random.default_rng(seed)
     theta = np.linspace(0, 2 * np.pi, n_samples, endpoint=False)
     ray_dirs = np.stack([np.cos(theta), np.sin(theta)], axis=1)
 
-    r_base = target_radius * (
-        1.0 + 0.015 * np.cos(3 * theta + rng.uniform(0, 2 * np.pi))
-    )
+    # 1. Fundamental 3-sided unpressured ovary profile:
+    # 3 primary dorsal ribs at angles locule_orientation + {0, 120, 240} deg
+    # In unpressured wild banana, the 3 carpel backs form 3 distinct ribs.
+    tri_amp = 0.09  # 9% radius modulation produces a clear rounded triangle
+    angles_rel = theta - locule_orientation
+    r_base = target_radius * (1.0 + tri_amp * np.cos(3 * angles_rel))
 
+    # Collect contact planes
     planes = []
 
-    # 1. Stem contact plane
+    # Stem contact plane
     v_stem = stem_center - center
     d_stem = np.linalg.norm(v_stem)
     clearance_stem = d_stem - stem_radius
@@ -146,7 +162,7 @@ def compute_contact_shape(
         p_dist = clearance_stem + (target_radius - clearance_stem) * (1.0 - compression)
         planes.append((n_stem, p_dist))
 
-    # 2. Neighbor contact planes
+    # Neighbor contact planes
     for n_c in neighbor_centers:
         v_n = n_c - center
         d_n = np.linalg.norm(v_n)
@@ -155,6 +171,7 @@ def compute_contact_shape(
             p_dist = (d_n / 2.0) + (target_radius - d_n / 2.0) * (1.0 - compression)
             planes.append((n_n, p_dist))
 
+    # Apply clipping
     r_clipped = np.copy(r_base)
     for n_vec, p_dist in planes:
         dots = np.dot(ray_dirs, n_vec)
@@ -162,9 +179,9 @@ def compute_contact_shape(
         r_plane = p_dist / np.maximum(dots[active], 0.02)
         r_clipped[active] = np.minimum(r_clipped[active], r_plane)
 
-    # Gaussian circular smoothing for corner filleting
+    # Corner filleting (smooth tissue transition at ribs)
     kernel_size = 23
-    sigma = corner_fillet * (1.0 - 0.40 * compression)
+    sigma = corner_fillet * (1.0 - 0.35 * compression)
     x_k = np.arange(-kernel_size // 2 + 1, kernel_size // 2 + 1)
     kernel = np.exp(-0.5 * (x_k / sigma) ** 2)
     kernel /= kernel.sum()
@@ -178,6 +195,7 @@ def compute_contact_shape(
         [r_smooth * np.cos(theta), r_smooth * np.sin(theta)], axis=1
     )
 
+    # Compute discrete curvature: kappa = |x' y'' - y' x''| / (x'^2 + y'^2)^1.5
     dx = np.gradient(points[:, 0])
     dy = np.gradient(points[:, 1])
     ddx = np.gradient(dx)
@@ -186,19 +204,31 @@ def compute_contact_shape(
     den = np.power(dx * dx + dy * dy, 1.5)
     curvature = np.abs(num / np.maximum(den, 1e-6))
 
-    # Identify rib vertices (curvature peaks)
-    rib_indices = []
+    # Rib Vertex Detection:
+    # Smooth curvature slightly to filter high-frequency discretization noise
+    curv_smooth = np.convolve(
+        np.concatenate([curvature[-9:], curvature, curvature[:9]]),
+        np.ones(9) / 9.0,
+        mode="same",
+    )[9:-9]
+
+    # Find local maxima in curvature with a minimum threshold and circular spacing
     n_pts = len(points)
-    curv_threshold = np.mean(curvature) + 0.28 * np.std(curvature)
-    min_spacing = int(n_pts * 0.11)
+    min_spacing = int(n_pts * 0.12)  # at least 12% (~43 samples) between ribs
+    curv_mean = np.mean(curv_smooth)
+    curv_std = np.std(curv_smooth)
+    threshold = curv_mean + 0.15 * curv_std
 
     candidates = []
     for i in range(n_pts):
         prev_i = (i - 1) % n_pts
         next_i = (i + 1) % n_pts
-        if curvature[i] > curvature[prev_i] and curvature[i] > curvature[next_i]:
-            if curvature[i] > curv_threshold:
-                candidates.append((curvature[i], i))
+        if (
+            curv_smooth[i] > curv_smooth[prev_i]
+            and curv_smooth[i] > curv_smooth[next_i]
+        ):
+            if curv_smooth[i] > threshold:
+                candidates.append((curv_smooth[i], i))
 
     candidates.sort(key=lambda c: c[0], reverse=True)
     selected = []
@@ -209,7 +239,18 @@ def compute_contact_shape(
             selected.append(idx)
 
     selected.sort()
-    facet_count = len(selected)
-    facet_count = max(3, min(5, facet_count if facet_count >= 3 else 4))
 
-    return points, selected, curvature, facet_count
+    # Botanical reality check:
+    # When compression is low (< 0.35), fruit is unpressured and reverts to its 3 carpel ribs!
+    if compression < 0.35 or len(selected) < 3:
+        # 3 fundamental carpel ribs
+        selected = []
+        for k in range(3):
+            rib_ang = (locule_orientation + k * (2 * np.pi / 3)) % (2 * np.pi)
+            diff = np.abs(np.angle(np.exp(1j * (theta - rib_ang))))
+            selected.append(int(np.argmin(diff)))
+        selected.sort()
+
+    facet_count = len(selected)
+
+    return points, selected, curv_smooth, facet_count
