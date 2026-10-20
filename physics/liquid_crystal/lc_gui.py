@@ -34,10 +34,12 @@ from PySide6.QtWidgets import (
     QSlider,
     QSpinBox,
     QSplitter,
+    QTabWidget,
     QVBoxLayout,
     QWidget,
 )
 
+from liquid_crystal import crosstalk as ct
 from liquid_crystal import frank_model as fm
 
 FRAME_MS = 30
@@ -252,6 +254,42 @@ class DirectorSweepWorker(QRunnable):
         self.signals.completed.emit(self.sweep_id, self.voltages, states)
 
 
+class GratingSignals(QObject):
+    completed = Signal(int, object, object)  # task_id, res_xtalk, res_ideal
+
+
+class GratingWorker(QRunnable):
+    """Computes periodic grating solutions off the GUI thread."""
+
+    def __init__(
+        self,
+        task_id: int,
+        cell: fm.CellParams,
+        optics: fm.OpticsParams,
+        grating: ct.GratingParams,
+        signals: GratingSignals,
+    ):
+        super().__init__()
+        self.task_id = task_id
+        self.cell = cell
+        self.optics = optics
+        self.grating = grating
+        self.signals = signals
+
+    def run(self):
+        res_xtalk = ct.solve_grating(self.cell, self.optics, self.grating)
+        ideal_params = ct.GratingParams(
+            period=self.grating.period,
+            n_x=self.grating.n_x,
+            profile_type=self.grating.profile_type,
+            v_min=self.grating.v_min,
+            v_max=self.grating.v_max,
+            crosstalk=False,
+        )
+        res_ideal = ct.solve_grating(self.cell, self.optics, ideal_params)
+        self.signals.completed.emit(self.task_id, res_xtalk, res_ideal)
+
+
 class LCWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -279,6 +317,14 @@ class LCWindow(QMainWindow):
 
         self.canvas_3d = FigureCanvasQTAgg(Figure(figsize=(4.5, 7)))
         self.canvas_2d = FigureCanvasQTAgg(Figure(figsize=(8, 7)))
+        self.canvas_grating = FigureCanvasQTAgg(Figure(figsize=(8, 7)))
+        self._grating_counter = 0
+        self._active_grating_id = 0
+        self._grating_signals = GratingSignals()
+        self._grating_signals.completed.connect(self._on_grating_completed)
+        self._grating_res_xtalk = None
+        self._grating_res_ideal = None
+
         self._last_2d_draw = 0.0
         # Constrained layout is more than half the cost of a 2D redraw, so it only
         # runs after resizes or preset changes and is frozen again once drawn.
@@ -289,6 +335,7 @@ class LCWindow(QMainWindow):
         self._relayout_2d()
         self._setup_3d_axes()
         self._setup_2d_axes()
+        self._setup_grating_axes()
 
         view_row = QHBoxLayout()
         for label, (elev, azim) in {
@@ -306,9 +353,14 @@ class LCWindow(QMainWindow):
         left_layout.addWidget(self.canvas_3d, stretch=1)
         left_layout.addLayout(view_row)
 
+        self.tabs_2d = QTabWidget()
+        self.tabs_2d.addTab(self.canvas_2d, "1D Cell Diagnostics")
+        self.tabs_2d.addTab(self.canvas_grating, "Spatial Crosstalk & Harmonics")
+        self.tabs_2d.currentChanged.connect(self._on_tab_changed)
+
         plots = QSplitter(Qt.Horizontal)
         plots.addWidget(left_plot)
-        plots.addWidget(self.canvas_2d)
+        plots.addWidget(self.tabs_2d)
         plots.setSizes([450, 800])
 
         main = QSplitter(Qt.Horizontal)
@@ -452,6 +504,40 @@ class LCWindow(QMainWindow):
             optics_form.addRow(label, self.w[key])
         layout.addWidget(optics)
 
+        crosstalk_box = QGroupBox("Spatial Crosstalk & Grating (SLM)")
+        crosstalk_form = QFormLayout(crosstalk_box)
+        self.crosstalk_enabled = QCheckBox("Enable spatial crosstalk")
+        self.crosstalk_enabled.setChecked(True)
+        self.crosstalk_enabled.toggled.connect(self._on_grating_changed)
+        crosstalk_form.addRow(self.crosstalk_enabled)
+
+        self.w["grating_period"] = _spin(1.0, 100.0, 10.0, decimals=1, suffix=" µm")
+        self.w["grating_period"].valueChanged.connect(self._on_grating_changed)
+        crosstalk_form.addRow("Grating period Λ", self.w["grating_period"])
+
+        self.profile_group = QButtonGroup(self)
+        profile_row = QHBoxLayout()
+        for idx, ptype in enumerate(ct.PROFILE_TYPES):
+            radio = QRadioButton(ptype.capitalize())
+            self.profile_group.addButton(radio, idx)
+            profile_row.addWidget(radio)
+        self.profile_group.button(0).setChecked(True)
+        self.profile_group.idClicked.connect(self._on_grating_changed)
+        crosstalk_form.addRow("Profile", profile_row)
+
+        self.w["grating_vmin"] = _spin(0.0, 20.0, 0.5, decimals=2, suffix=" V")
+        self.w["grating_vmin"].valueChanged.connect(self._on_grating_changed)
+        crosstalk_form.addRow("V_min", self.w["grating_vmin"])
+
+        self.w["grating_vmax"] = _spin(0.0, 20.0, 4.5, decimals=2, suffix=" V")
+        self.w["grating_vmax"].valueChanged.connect(self._on_grating_changed)
+        crosstalk_form.addRow("V_max", self.w["grating_vmax"])
+
+        recompute_btn = QPushButton("Recompute Grating Harmonics")
+        recompute_btn.clicked.connect(self._request_grating_recompute)
+        crosstalk_form.addRow(recompute_btn)
+        layout.addWidget(crosstalk_box)
+
         self.info = QLabel()
         self.info.setWordWrap(True)
         self.info.setTextInteractionFlags(Qt.TextSelectableByMouse)
@@ -514,6 +600,7 @@ class LCWindow(QMainWindow):
         self.optics = self._read_optics_params()
         self._reset_state()
         self._request_director_sweep()
+        self._request_grating_recompute()
         self._relayout_2d()
 
     def _on_analyser_toggled(self, checked):
@@ -526,6 +613,7 @@ class LCWindow(QMainWindow):
         self.params = self._read_cell_params()
         self.theta, self.phi = fm.resample_state(self.theta, self.phi, self.params)
         self._request_director_sweep()
+        self._request_grating_recompute()
         if not self.is_live:
             self._snap_to_equilibrium()
         self._redraw()
@@ -535,6 +623,7 @@ class LCWindow(QMainWindow):
             return
         self.optics = self._read_optics_params()
         self._recompute_vt_from_cached_states()
+        self._request_grating_recompute()
         self._redraw()
 
     def _request_director_sweep(self):
@@ -570,6 +659,44 @@ class LCWindow(QMainWindow):
             t_para = np.array([o[0] for o in outputs])
             t_cross = np.array([o[1] for o in outputs])
             self.vt_curve = (self._vt_voltages, t_para, t_cross)
+
+    def _read_grating_params(self):
+        w = self.w
+        return ct.GratingParams(
+            period=w["grating_period"].value() * 1e-6,
+            profile_type=ct.PROFILE_TYPES[self.profile_group.checkedId()],
+            v_min=w["grating_vmin"].value(),
+            v_max=w["grating_vmax"].value(),
+            crosstalk=self.crosstalk_enabled.isChecked(),
+        )
+
+    def _on_grating_changed(self, *_):
+        if self._suspend_updates:
+            return
+        self._request_grating_recompute()
+
+    def _on_tab_changed(self, index):
+        if index == 1 and self._grating_res_xtalk is None:
+            self._request_grating_recompute()
+        self._redraw()
+
+    def _request_grating_recompute(self):
+        self._grating_counter += 1
+        task_id = self._grating_counter
+        self._active_grating_id = task_id
+        grating = self._read_grating_params()
+        worker = GratingWorker(
+            task_id, self.params, self.optics, grating, self._grating_signals
+        )
+        self.thread_pool.start(worker)
+
+    def _on_grating_completed(self, task_id: int, res_xtalk, res_ideal):
+        if task_id != self._active_grating_id:
+            return
+        self._grating_res_xtalk = res_xtalk
+        self._grating_res_ideal = res_ideal
+        self._redraw_grating()
+        self._redraw()
 
     def _on_voltage_changed(self, *_):
         if self._suspend_updates:
@@ -762,6 +889,102 @@ class LCWindow(QMainWindow):
         )
         self.ax_time_voltage.set_ylabel("applied V", color="C1")
 
+    def _setup_grating_axes(self):
+        fig = self.canvas_grating.figure
+        (ax_pot, ax_phase), (ax_harmonics, ax_trans) = fig.subplots(2, 2)
+        self.ax_grating_pot, self.ax_grating_phase = ax_pot, ax_phase
+        self.ax_grating_harmonics, self.ax_grating_trans = ax_harmonics, ax_trans
+
+        ax_pot.set_xlabel("x (µm)")
+        ax_pot.set_ylabel("z (µm)")
+        ax_pot.set_title("Electric Potential V(x, z)")
+
+        (self.line_phase_xtalk,) = ax_phase.plot(
+            [], [], color="C0", label="with crosstalk"
+        )
+        (self.line_phase_ideal,) = ax_phase.plot(
+            [], [], color="C1", linestyle="--", label="ideal (no crosstalk)"
+        )
+        ax_phase.set_xlabel("x (µm)")
+        ax_phase.set_ylabel("phase Φ (rad)")
+        ax_phase.set_title("Optical Phase Across Period")
+        ax_phase.legend(loc="best")
+        ax_phase.grid(alpha=0.3)
+
+        (self.line_trans_xtalk,) = ax_trans.plot(
+            [], [], color="C0", label="with crosstalk"
+        )
+        (self.line_trans_ideal,) = ax_trans.plot(
+            [], [], color="C1", linestyle="--", label="ideal (no crosstalk)"
+        )
+        ax_trans.set_xlabel("x (µm)")
+        ax_trans.set_ylabel("transmission / reflectance")
+        ax_trans.set_title("Optical Transmission Across Period")
+        ax_trans.set_ylim(-0.02, 1.02)
+        ax_trans.legend(loc="best")
+        ax_trans.grid(alpha=0.3)
+
+        ax_harmonics.set_xlabel("diffraction order n (e^{i n k x})")
+        ax_harmonics.set_ylabel("efficiency η_n")
+        ax_harmonics.set_title("Spatial Harmonics & Ghost Orders")
+        ax_harmonics.grid(alpha=0.3)
+
+    def _redraw_grating(self):
+        if self._grating_res_xtalk is None or self._grating_res_ideal is None:
+            return
+        rx = self._grating_res_xtalk
+        ri = self._grating_res_ideal
+        x_um = rx.x * 1e6
+        z_um = rx.z * 1e6
+
+        self.ax_grating_pot.clear()
+        self.ax_grating_pot.contourf(
+            x_um, z_um, rx.potential.T, levels=14, cmap="viridis"
+        )
+        self.ax_grating_pot.set_xlabel("x (µm)")
+        self.ax_grating_pot.set_ylabel("z (µm)")
+        xtalk_state = "on" if self.crosstalk_enabled.isChecked() else "off"
+        self.ax_grating_pot.set_title(
+            f"Electric Potential V(x,z) (crosstalk: {xtalk_state})"
+        )
+
+        self.line_phase_xtalk.set_data(x_um, rx.optical_phase)
+        self.line_phase_ideal.set_data(x_um, ri.optical_phase)
+        self.ax_grating_phase.relim()
+        self.ax_grating_phase.autoscale_view()
+
+        self.line_trans_xtalk.set_data(x_um, rx.optical_transmission)
+        self.line_trans_ideal.set_data(x_um, ri.optical_transmission)
+        self.ax_grating_trans.relim()
+        self.ax_grating_trans.autoscale_view()
+
+        self.ax_grating_harmonics.clear()
+        orders = rx.orders
+        width = 0.35
+        self.ax_grating_harmonics.bar(
+            orders - width / 2,
+            rx.efficiencies,
+            width=width,
+            color="C0",
+            label="with crosstalk",
+        )
+        self.ax_grating_harmonics.bar(
+            orders + width / 2,
+            ri.efficiencies,
+            width=width,
+            color="C1",
+            alpha=0.6,
+            label="ideal (no crosstalk)",
+        )
+        self.ax_grating_harmonics.set_xlabel("diffraction order n (e^{i n k x})")
+        self.ax_grating_harmonics.set_ylabel("efficiency η_n")
+        self.ax_grating_harmonics.set_title("Diffraction Harmonics e^{i n k x}")
+        self.ax_grating_harmonics.set_xticks(orders)
+        self.ax_grating_harmonics.legend(loc="upper right")
+        self.ax_grating_harmonics.grid(alpha=0.3)
+
+        self.canvas_grating.draw_idle()
+
     def _director_vectors(self, theta, phi):
         return np.column_stack(
             [np.cos(theta) * np.cos(phi), np.cos(theta) * np.sin(phi), np.sin(theta)]
@@ -778,32 +1001,80 @@ class LCWindow(QMainWindow):
         # 3D rods: resample the profile onto a fixed number of drawn layers.
         s_layers = np.linspace(0.0, 1.0, N_ROD_LAYERS)
         s_nodes = np.linspace(0.0, 1.0, p.n_nodes)
-        theta_layers = np.interp(s_layers, s_nodes, theta)
-        directors = self._director_vectors(
-            theta_layers, np.interp(s_layers, s_nodes, phi)
-        )
-        centres = np.concatenate(
-            [
-                np.broadcast_to(
-                    self.column_offsets[:, None, :],
-                    (len(self.column_offsets), N_ROD_LAYERS, 2),
-                ),
-                np.broadcast_to(
-                    s_layers[None, :, None], (len(self.column_offsets), N_ROD_LAYERS, 1)
-                ),
-            ],
-            axis=-1,
-        )
-        half_rod = 0.5 * ROD_LENGTH * directors[None, :, :]
-        self.rods.set_segments(
-            np.stack([centres - half_rod, centres + half_rod], axis=2).reshape(-1, 2, 3)
-        )
-        self.rods.set_color(
-            np.tile(
-                self.tilt_cmap(self.tilt_norm(np.degrees(np.abs(theta_layers)))),
-                (len(self.column_offsets), 1),
+
+        if self.tabs_2d.currentIndex() == 1 and self._grating_res_xtalk is not None:
+            rx = self._grating_res_xtalk
+            unique_x = np.sort(np.unique(self.column_offsets[:, 0]))
+            all_directors = []
+            all_thetas = []
+            for col_x, col_y in self.column_offsets:
+                k = int(np.where(unique_x == col_x)[0][0])
+                target_col = int(
+                    round(k / max(len(unique_x) - 1, 1) * (rx.theta.shape[0] - 1))
+                )
+                th_l = np.interp(s_layers, s_nodes, rx.theta[target_col])
+                ph_l = np.interp(s_layers, s_nodes, rx.phi[target_col])
+                all_thetas.append(th_l)
+                all_directors.append(self._director_vectors(th_l, ph_l))
+            directors = np.array(all_directors)
+            half_rod = 0.5 * ROD_LENGTH * directors
+            centres = np.concatenate(
+                [
+                    np.broadcast_to(
+                        self.column_offsets[:, None, :],
+                        (len(self.column_offsets), N_ROD_LAYERS, 2),
+                    ),
+                    np.broadcast_to(
+                        s_layers[None, :, None],
+                        (len(self.column_offsets), N_ROD_LAYERS, 1),
+                    ),
+                ],
+                axis=-1,
             )
-        )
+            self.rods.set_segments(
+                np.stack([centres - half_rod, centres + half_rod], axis=2).reshape(
+                    -1, 2, 3
+                )
+            )
+            self.rods.set_color(
+                self.tilt_cmap(
+                    self.tilt_norm(np.degrees(np.abs(np.array(all_thetas))))
+                ).reshape(-1, 4)
+            )
+            self.ax_3d.set_title("Grating Director Profile Across Period x")
+        else:
+            theta_layers = np.interp(s_layers, s_nodes, theta)
+            directors = self._director_vectors(
+                theta_layers, np.interp(s_layers, s_nodes, phi)
+            )
+            centres = np.concatenate(
+                [
+                    np.broadcast_to(
+                        self.column_offsets[:, None, :],
+                        (len(self.column_offsets), N_ROD_LAYERS, 2),
+                    ),
+                    np.broadcast_to(
+                        s_layers[None, :, None],
+                        (len(self.column_offsets), N_ROD_LAYERS, 1),
+                    ),
+                ],
+                axis=-1,
+            )
+            half_rod = 0.5 * ROD_LENGTH * directors[None, :, :]
+            self.rods.set_segments(
+                np.stack([centres - half_rod, centres + half_rod], axis=2).reshape(
+                    -1, 2, 3
+                )
+            )
+            self.rods.set_color(
+                np.tile(
+                    self.tilt_cmap(self.tilt_norm(np.degrees(np.abs(theta_layers)))),
+                    (len(self.column_offsets), 1),
+                )
+            )
+            self.ax_3d.set_title(
+                f"Director field, V = {voltage:.2f} V (rubbing: black)"
+            )
         arrow = 1.6 * COLUMN_SPACING
         for line, azimuth, z in (
             (self.rub_bottom, p.azimuth_bottom, 0.0),
@@ -814,7 +1085,6 @@ class LCWindow(QMainWindow):
                 [-arrow * np.sin(azimuth), arrow * np.sin(azimuth)],
                 [z, z],
             )
-        self.ax_3d.set_title(f"Director field, V = {voltage:.2f} V (rubbing: black)")
         self.canvas_3d.draw_idle()
 
         # Profiles and energy densities.
