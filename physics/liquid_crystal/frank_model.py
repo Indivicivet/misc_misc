@@ -38,7 +38,7 @@ EPS0 = 8.8541878128e-12
 # directors where phi is undefined.
 _PHI_MOBILITY_REGULARISATION = 1e-4
 
-OPTICS_MODES = ("transmissive_crossed", "transmissive_parallel", "reflective_crossed")
+OPTICS_MODES = ("transmissive", "reflective")
 
 
 @dataclass(frozen=True)
@@ -80,7 +80,9 @@ class OpticsParams:
     delta_n: float = 0.22
     # Input polariser azimuth (radians) in the lab frame.
     polarizer_angle: float = 0.0
-    mode: str = "transmissive_crossed"
+    mode: str = "transmissive"
+    # If analyser_angle is None, an orthogonal pair (parallel, crossed) is computed.
+    analyser_angle: float | None = None
 
 
 def _trapezoid_weights(n_nodes: int) -> np.ndarray:
@@ -335,40 +337,70 @@ def layer_jones_matrices(theta, phi, p: CellParams, optics: OpticsParams):
     )
 
 
-def optical_output(theta, phi, p: CellParams, optics: OpticsParams) -> float:
-    """Fraction of polarised input intensity passing the analyser (ideal optics).
+def optical_outputs(theta, phi, p: CellParams, optics: OpticsParams):
+    """Compute optical intensity output(s) for the cell and optics.
 
-    Transmissive modes: light enters at z = 0 and exits at z = d.
-    Reflective (LCoS-like): light enters at z = d, reflects off an ideal mirror at
-    z = 0 and returns; a polarising beam splitter acts as crossed polarisers.
-    By reciprocity, the return pass in the same lab frame is the transpose of the
-    forward pass.
+    Transmissive mode: light enters at z = 0 and exits at z = d.
+    Reflective mode (LCoS-like): light enters at z = d, reflects off an ideal mirror at
+    z = 0 and returns. By reciprocity, the return pass in the same lab frame is the
+    transpose of the forward pass.
+
+    Returns:
+        If optics.analyser_angle is not None:
+            a single float (fraction of intensity passing that analyser).
+        If optics.analyser_angle is None:
+            a tuple (t_parallel, t_crossed) of fractions for linear polarisations
+            parallel and perpendicular to the input polariser azimuth.
     """
     matrices = layer_jones_matrices(theta, phi, p, optics)
-    if optics.mode.startswith("transmissive"):
+    if optics.mode == "transmissive":
         ordered = matrices
     else:
         ordered = matrices[::-1]
     jones = np.eye(2, dtype=complex)
     for matrix in ordered:
         jones = matrix @ jones
-    if optics.mode == "reflective_crossed":
+    if optics.mode == "reflective":
         jones = jones.T @ jones
 
     alpha = optics.polarizer_angle
     e_in = np.array([np.cos(alpha), np.sin(alpha)])
-    if optics.mode == "transmissive_parallel":
-        e_analyser = e_in
-    else:
-        e_analyser = np.array([-np.sin(alpha), np.cos(alpha)])
-    return float(abs(e_analyser @ jones @ e_in) ** 2)
+    e_out = jones @ e_in
+
+    if optics.analyser_angle is not None:
+        beta = optics.analyser_angle
+        e_analyser = np.array([np.cos(beta), np.sin(beta)])
+        return float(abs(e_analyser @ e_out) ** 2)
+
+    e_para = e_in
+    e_cross = np.array([-np.sin(alpha), np.cos(alpha)])
+    t_para = float(abs(e_para @ e_out) ** 2)
+    t_cross = float(abs(e_cross @ e_out) ** 2)
+    return t_para, t_cross
+
+
+def optical_output(theta, phi, p: CellParams, optics: OpticsParams) -> float:
+    """Fraction of polarised input intensity passing the analyser.
+
+    If optics.analyser_angle is None, defaults to crossed polarisation.
+    """
+    out = optical_outputs(theta, phi, p, optics)
+    if isinstance(out, tuple):
+        return out[1]
+    return out
+
+
+def director_sweep(p: CellParams, voltages):
+    """Equilibrium director profiles across a voltage sweep, warm-started."""
+    theta, phi = initial_state(p)
+    states = []
+    for voltage in voltages:
+        theta, phi = equilibrium(theta, phi, p, voltage)
+        states.append((theta, phi))
+    return states
 
 
 def voltage_sweep(p: CellParams, optics: OpticsParams, voltages):
     """Quasi-static optical response, warm-starting each voltage from the last."""
-    theta, phi = initial_state(p)
-    outputs = []
-    for voltage in voltages:
-        theta, phi = equilibrium(theta, phi, p, voltage)
-        outputs.append(optical_output(theta, phi, p, optics))
-    return np.array(outputs)
+    states = director_sweep(p, voltages)
+    return np.array([optical_outputs(theta, phi, p, optics) for theta, phi in states])

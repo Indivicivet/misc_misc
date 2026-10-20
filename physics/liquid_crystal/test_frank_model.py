@@ -75,7 +75,7 @@ def test_planar_retarder_matches_analytic():
 
 def test_van_reflective_off_state_is_dark():
     optics = fm.OpticsParams(
-        polarizer_angle=np.pi / 4, delta_n=0.083, mode="reflective_crossed"
+        polarizer_angle=np.pi / 4, delta_n=0.083, mode="reflective"
     )
     theta, phi = fm.initial_state(VAN, perturbation=0.0)
     assert fm.optical_output(theta, phi, VAN, optics) == pytest.approx(0.0, abs=1e-12)

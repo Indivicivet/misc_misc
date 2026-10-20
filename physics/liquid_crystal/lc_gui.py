@@ -15,7 +15,7 @@ from matplotlib.cm import ScalarMappable
 from matplotlib.colors import Normalize
 from matplotlib.figure import Figure
 from mpl_toolkits.mplot3d.art3d import Line3DCollection, Poly3DCollection
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import QObject, QRunnable, QThreadPool, Qt, QTimer, Signal
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
     QApplication,
@@ -81,7 +81,9 @@ PRESETS = {
         "pretilt_top": 2.0,
         "azimuth_bottom": 0.0,
         "polarizer": 0.0,
-        "optics_mode": "transmissive_crossed",
+        "has_analyser": False,
+        "analyser": 90.0,
+        "optics_mode": "transmissive",
         "voltage": 0.0,
         "vt_max": 6.0,
     },
@@ -94,7 +96,9 @@ PRESETS = {
         "pretilt_top": 88.0,
         "azimuth_bottom": 0.0,
         "polarizer": 45.0,
-        "optics_mode": "reflective_crossed",
+        "has_analyser": False,
+        "analyser": -45.0,
+        "optics_mode": "reflective",
         "voltage": 0.0,
         "vt_max": 8.0,
     },
@@ -107,7 +111,9 @@ PRESETS = {
         "pretilt_top": 1.0,
         "azimuth_bottom": 0.0,
         "polarizer": 45.0,
-        "optics_mode": "transmissive_crossed",
+        "has_analyser": False,
+        "analyser": -45.0,
+        "optics_mode": "transmissive",
         "voltage": 0.0,
         "vt_max": 5.0,
     },
@@ -120,16 +126,17 @@ PRESETS = {
         "pretilt_top": 90.0,
         "azimuth_bottom": 0.0,
         "polarizer": 45.0,
-        "optics_mode": "transmissive_crossed",
+        "has_analyser": False,
+        "analyser": -45.0,
+        "optics_mode": "transmissive",
         "voltage": 0.0,
         "vt_max": 5.0,
     },
 }
 
 OPTICS_MODE_LABELS = {
-    "transmissive_crossed": "Transmissive, crossed polarisers",
-    "transmissive_parallel": "Transmissive, parallel polarisers",
-    "reflective_crossed": "Reflective (LCoS mirror + PBS)",
+    "transmissive": "Transmissive",
+    "reflective": "Reflective (mirror at substrate z = 0)",
 }
 
 
@@ -220,6 +227,31 @@ def _spin(minimum, maximum, value, decimals=2, suffix="", integer=False):
     return spin
 
 
+class SweepSignals(QObject):
+    completed = Signal(int, object, object)  # sweep_id, voltages, states
+
+
+class DirectorSweepWorker(QRunnable):
+    """Computes equilibrium director states for a voltage sweep off the GUI thread."""
+
+    def __init__(
+        self,
+        sweep_id: int,
+        params: fm.CellParams,
+        voltages: np.ndarray,
+        signals: SweepSignals,
+    ):
+        super().__init__()
+        self.sweep_id = sweep_id
+        self.params = params
+        self.voltages = voltages
+        self.signals = signals
+
+    def run(self):
+        states = fm.director_sweep(self.params, self.voltages)
+        self.signals.completed.emit(self.sweep_id, self.voltages, states)
+
+
 class LCWindow(QMainWindow):
     def __init__(self):
         super().__init__()
@@ -227,6 +259,13 @@ class LCWindow(QMainWindow):
         self.w = {}
         self._suspend_updates = True
         self.vt_curve = None
+        self._vt_director_states = None
+        self._vt_voltages = None
+        self._sweep_counter = 0
+        self._active_sweep_id = 0
+        self._sweep_signals = SweepSignals()
+        self._sweep_signals.completed.connect(self._on_director_sweep_completed)
+        self.thread_pool = QThreadPool.globalInstance()
         self.history = deque(maxlen=HISTORY_LENGTH)
         self.sim_time = 0.0
         self.last_steps = 0
@@ -337,13 +376,9 @@ class LCWindow(QMainWindow):
         buttons.addWidget(snap)
         drive_form.addRow(buttons)
 
-        vt_row = QHBoxLayout()
-        vt_button = QPushButton("Compute V-T curve")
-        vt_button.clicked.connect(self._compute_vt_curve)
-        self.w["vt_max"] = _spin(0.5, 50.0, 6.0, decimals=1, suffix=" V max")
-        vt_row.addWidget(vt_button)
-        vt_row.addWidget(self.w["vt_max"])
-        drive_form.addRow(vt_row)
+        self.w["vt_max"] = _spin(0.5, 50.0, 6.0, decimals=1, suffix=" V")
+        self.w["vt_max"].valueChanged.connect(self._on_cell_changed)
+        drive_form.addRow("V-T max voltage", self.w["vt_max"])
         layout.addWidget(drive)
 
         material = QGroupBox("Material")
@@ -392,9 +427,21 @@ class LCWindow(QMainWindow):
         self.optics_group.button(0).setChecked(True)
         self.optics_group.idClicked.connect(self._on_optics_changed)
         optics_form.addRow(optics_column)
+
         self.w["polarizer"] = SliderSpin(-90.0, 90.0, 0.0, decimals=1, suffix="°")
         self.w["polarizer"].valueChanged.connect(self._on_optics_changed)
-        optics_form.addRow("Polariser azimuth", self.w["polarizer"])
+        optics_form.addRow("Input polariser azimuth", self.w["polarizer"])
+
+        self.has_analyser = QCheckBox("Apply output analyser")
+        self.has_analyser.setChecked(False)
+        self.has_analyser.toggled.connect(self._on_analyser_toggled)
+        optics_form.addRow(self.has_analyser)
+
+        self.w["analyser"] = SliderSpin(-90.0, 90.0, 90.0, decimals=1, suffix="°")
+        self.w["analyser"].setEnabled(False)
+        self.w["analyser"].valueChanged.connect(self._on_optics_changed)
+        optics_form.addRow("Analyser azimuth", self.w["analyser"])
+
         for key, label, minimum, maximum, value, decimals, suffix in (
             ("wavelength", "Wavelength", 380.0, 800.0, 550.0, 0, " nm"),
             ("n_o", "n_o", 1.0, 2.5, 1.52, 3, ""),
@@ -431,12 +478,18 @@ class LCWindow(QMainWindow):
         )
 
     def _read_optics_params(self):
+        analyser_angle = (
+            np.radians(self.w["analyser"].value())
+            if self.has_analyser.isChecked()
+            else None
+        )
         return fm.OpticsParams(
             wavelength=self.w["wavelength"].value() * 1e-9,
             n_o=self.w["n_o"].value(),
             delta_n=self.w["delta_n"].value(),
             polarizer_angle=np.radians(self.w["polarizer"].value()),
             mode=fm.OPTICS_MODES[self.optics_group.checkedId()],
+            analyser_angle=analyser_angle,
         )
 
     @property
@@ -451,21 +504,28 @@ class LCWindow(QMainWindow):
         for key, value in preset.items():
             if key == "optics_mode":
                 self.optics_group.button(fm.OPTICS_MODES.index(value)).setChecked(True)
+            elif key == "has_analyser":
+                self.has_analyser.setChecked(value)
+                self.w["analyser"].setEnabled(value)
             else:
                 self.w[key].setValue(value)
         self._suspend_updates = False
         self.params = self._read_cell_params()
         self.optics = self._read_optics_params()
         self._reset_state()
-        self._compute_vt_curve()
+        self._request_director_sweep()
         self._relayout_2d()
+
+    def _on_analyser_toggled(self, checked):
+        self.w["analyser"].setEnabled(checked)
+        self._on_optics_changed()
 
     def _on_cell_changed(self, *_):
         if self._suspend_updates:
             return
         self.params = self._read_cell_params()
         self.theta, self.phi = fm.resample_state(self.theta, self.phi, self.params)
-        self.vt_curve = None
+        self._request_director_sweep()
         if not self.is_live:
             self._snap_to_equilibrium()
         self._redraw()
@@ -474,8 +534,42 @@ class LCWindow(QMainWindow):
         if self._suspend_updates:
             return
         self.optics = self._read_optics_params()
-        self.vt_curve = None
+        self._recompute_vt_from_cached_states()
         self._redraw()
+
+    def _request_director_sweep(self):
+        self._sweep_counter += 1
+        sweep_id = self._sweep_counter
+        self._active_sweep_id = sweep_id
+        voltages = np.linspace(0.0, self.w["vt_max"].value(), 81)
+        worker = DirectorSweepWorker(
+            sweep_id, self.params, voltages, self._sweep_signals
+        )
+        self.thread_pool.start(worker)
+
+    def _on_director_sweep_completed(self, sweep_id: int, voltages: np.ndarray, states):
+        if sweep_id != self._active_sweep_id:
+            return
+        self._vt_director_states = states
+        self._vt_voltages = voltages
+        self._recompute_vt_from_cached_states()
+        self._redraw()
+
+    def _recompute_vt_from_cached_states(self):
+        if self._vt_director_states is None or self._vt_voltages is None:
+            return
+        outputs = [
+            fm.optical_outputs(theta, phi, self.params, self.optics)
+            for theta, phi in self._vt_director_states
+        ]
+        if self.optics.analyser_angle is not None:
+            # Single curve
+            self.vt_curve = (self._vt_voltages, np.array(outputs), None)
+        else:
+            # Dual curve: (parallel, crossed)
+            t_para = np.array([o[0] for o in outputs])
+            t_cross = np.array([o[1] for o in outputs])
+            self.vt_curve = (self._vt_voltages, t_para, t_cross)
 
     def _on_voltage_changed(self, *_):
         if self._suspend_updates:
@@ -500,18 +594,6 @@ class LCWindow(QMainWindow):
         self.theta, self.phi = fm.equilibrium(
             self.theta, self.phi, self.params, self._applied_voltage()
         )
-        self._redraw()
-
-    def _compute_vt_curve(self):
-        QGuiApplication.setOverrideCursor(Qt.WaitCursor)
-        try:
-            voltages = np.linspace(0.0, self.w["vt_max"].value(), 81)
-            self.vt_curve = (
-                voltages,
-                fm.voltage_sweep(self.params, self.optics, voltages),
-            )
-        finally:
-            QGuiApplication.restoreOverrideCursor()
         self._redraw()
 
     def _set_view(self, elev, azim):
@@ -653,9 +735,15 @@ class LCWindow(QMainWindow):
         ax_energy.legend(loc="upper right")
         ax_energy.grid(alpha=0.3)
 
+        (self.line_vt_para,) = ax_vt.plot([], [], color="C0", label="parallel")
+        (self.line_vt_cross,) = ax_vt.plot(
+            [], [], color="C1", linestyle="--", label="crossed"
+        )
         (self.line_vt,) = ax_vt.plot([], [], color="C0")
         self.vt_marker = ax_vt.axvline(0.0, color="C3", lw=1)
         (self.vt_point,) = ax_vt.plot([], [], "o", color="C3")
+        self.vt_legend = ax_vt.legend(loc="upper right")
+        self.vt_legend.set_visible(False)
         ax_vt.set_xlabel("RMS voltage (V)")
         ax_vt.set_ylabel("optical output")
         ax_vt.set_title("Quasi-static V-T curve")
@@ -741,9 +829,22 @@ class LCWindow(QMainWindow):
 
         if self.vt_curve is None:
             self.line_vt.set_data([], [])
+            self.line_vt_para.set_data([], [])
+            self.line_vt_cross.set_data([], [])
+            self.vt_legend.set_visible(False)
         else:
-            self.line_vt.set_data(*self.vt_curve)
-            self.ax_vt.set_xlim(0.0, self.vt_curve[0][-1])
+            v_vals, c1, c2 = self.vt_curve
+            self.ax_vt.set_xlim(0.0, v_vals[-1])
+            if c2 is None:
+                self.line_vt.set_data(v_vals, c1)
+                self.line_vt_para.set_data([], [])
+                self.line_vt_cross.set_data([], [])
+                self.vt_legend.set_visible(False)
+            else:
+                self.line_vt.set_data([], [])
+                self.line_vt_para.set_data(v_vals, c1)
+                self.line_vt_cross.set_data(v_vals, c2)
+                self.vt_legend.set_visible(True)
         self.vt_marker.set_xdata([voltage, voltage])
         self.vt_point.set_data([voltage], [output])
 
