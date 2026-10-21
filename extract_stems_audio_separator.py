@@ -1,12 +1,12 @@
 """
 split song into open format stems and package up in .stem.mp4 format
 
-Uses audio-separator (supporting RoFormer models or 4-stem Demucs models)
+Uses audio-separator (defaulting to BS-Roformer-SW 6-stem model, with 4-stem packaging)
 + MP4Box + stempeg
 
 Requires:
   - ffmpeg, MP4Box installed and on PATH
-  - pip install audio-separator[gpu]  (or audio-separator for CPU)
+  - pip install "audio-separator[gpu]"
   - pip install stempeg mutagen pydub
 """
 
@@ -23,11 +23,9 @@ FFMPEG_EXE = "ffmpeg.exe"
 MP4BOX_EXE = "MP4Box.exe"
 OUT_FOLDER = Path(r"D:\music_prod\stems_openfmt")
 
-# Standard 4-stem model via audio-separator:
-# - "htdemucs_ft.yaml" or "htdemucs.yaml" produces Vocals, Drums, Bass, Other.
-# - 2-stem vocal RoFormer models (e.g. "model_bs_roformer_ep_317_sdr_12.9755.ckpt")
-#   only produce Vocals and Instrumental.
-DEFAULT_MODEL = "htdemucs_ft.yaml"
+# BS-Roformer-SW is a multi-stem model (separates Vocals, Drums, Bass, Guitar, Piano, Other)
+# audio-separator automatically downloads the .ckpt and its .yaml config on first run.
+DEFAULT_MODEL = "BS-Rofo-SW-Fixed.ckpt"
 
 
 def ffmpeg_encode(input_wav: Path, output_mp4: Path):
@@ -47,13 +45,13 @@ def ffmpeg_encode(input_wav: Path, output_mp4: Path):
     )
 
 
-def match_stem(stem_files: list[str], keyword: str) -> Path:
+def match_stem(stem_files: list[Path], keyword: str) -> Path:
     keyword_lower = keyword.lower()
-    for name in stem_files:
-        if keyword_lower in Path(name).stem.lower():
-            return Path(name)
+    for p in stem_files:
+        if keyword_lower in p.stem.lower():
+            return p
     raise RuntimeError(
-        f"Could not find stem matching '{keyword}' in output files: {stem_files}"
+        f"Could not find stem matching '{keyword}' in output files: {[str(p) for p in stem_files]}"
     )
 
 
@@ -65,40 +63,70 @@ audio = mutagen.easyid3.EasyID3(str(input_path))
 title = audio.get("title", [input_path.stem])[0]
 artist = audio.get("artist", ["Unknown Artist"])[0]
 album = audio.get("album", ["Unknown Album"])[0]
-print(f"{artist=} - {title=} ({album=})")
+print(f"\nProcessing: {artist} - {title} ({album})")
 
-print("Initializing audio-separator...")
+# Low-VRAM configuration (4GB GPU friendly):
+# - chunk_duration=30 limits continuous self-attention sequences into 30s segments
+# - sample_rate=44100 / WAV output
+print(
+    f"Initializing audio-separator with 4GB VRAM safety settings (chunk_duration=30)..."
+)
 separator = Separator(
     output_dir=str(temp_dir),
     output_format="WAV",
+    chunk_duration=30,
 )
 
-print(f"Loading model '{DEFAULT_MODEL}'...")
+print(f"Loading '{DEFAULT_MODEL}'...")
 separator.load_model(model_filename=DEFAULT_MODEL)
 
-print("Running stem separation...")
+print("Running BS-Roformer separation...")
 output_stem_names = separator.separate(str(input_path))
 print(f"Separated files: {output_stem_names}")
 
-# audio-separator returns filenames relative to output_dir or full paths
 stem_files = [
     temp_dir / f if not Path(f).is_absolute() else Path(f) for f in output_stem_names
 ]
 
+# Native Instruments .stem.mp4 standard format defines 4 stems: Vocals, Drums, Bass, Other.
+# If BS-Roformer-SW outputs extra stems (guitar, piano), combine them into the 'other' stem.
+vocal_path = match_stem(stem_files, "vocal")
+drum_path = match_stem(stem_files, "drum")
+bass_path = match_stem(stem_files, "bass")
+
+other_candidates = [
+    p for p in stem_files if p not in (vocal_path, drum_path, bass_path)
+]
+
+if len(other_candidates) == 1:
+    other_path = other_candidates[0]
+else:
+    # Blend guitar, piano, and other into the 4th stem
+    print(
+        "Combining remaining instrument stems (guitar/piano/other) into standard 4th 'Other' stem..."
+    )
+    other_combined = None
+    for p in other_candidates:
+        seg = pydub.AudioSegment.from_file(p)
+        other_combined = seg if other_combined is None else other_combined.overlay(seg)
+    other_path = temp_dir / f"{input_path.stem}_combined_other.wav"
+    other_combined.export(other_path, format="wav")
+
 stem_paths = {
-    "vocals": match_stem([str(p) for p in stem_files], "vocal"),
-    "drums": match_stem([str(p) for p in stem_files], "drum"),
-    "bass": match_stem([str(p) for p in stem_files], "bass"),
-    "other": match_stem([str(p) for p in stem_files], "other"),
+    "vocals": vocal_path,
+    "drums": drum_path,
+    "bass": bass_path,
+    "other": other_path,
 }
 
 print("Encoding stems to AAC MP4...")
 stem_mp4s = {}
 for stem, path_wav in stem_paths.items():
-    mp4_path = path_wav.with_suffix(".mp4")
+    mp4_path = temp_dir / f"{stem}.mp4"
     ffmpeg_encode(path_wav, mp4_path)
     stem_mp4s[stem] = mp4_path
 
+# Create combined master mix
 combined = None
 for path in stem_paths.values():
     segment = pydub.AudioSegment.from_file(path)
@@ -141,7 +169,7 @@ stem_metadata = {
         {"id": 4, "name": "Other", "color": "#00FFFF"},
     ],
 }
-json_path = master_mp4_path.with_name("stem_metadata.json")
+json_path = temp_dir / "stem_metadata.json"
 with open(json_path, "w", encoding="utf-8") as f:
     json.dump(stem_metadata, f, indent=2)
 
@@ -151,14 +179,16 @@ stempeg.inject(
     metadata=str(stem_metadata),
     out_filename=str(final_stem_out),
 )
-print("done!")
+print(f"Done! Created: {final_stem_out}")
 
-print("clearing temp...")
+print("Cleaning temp files...")
 master_path.unlink(missing_ok=True)
 master_mp4_path.unlink(missing_ok=True)
 json_path.unlink(missing_ok=True)
 temp_no_meta_stem.unlink(missing_ok=True)
-for fp in stem_paths.values():
+if other_path != other_candidates[0]:
+    other_path.unlink(missing_ok=True)
+for fp in stem_files:
     fp.unlink(missing_ok=True)
 for fp in stem_mp4s.values():
     fp.unlink(missing_ok=True)
