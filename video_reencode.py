@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+from tqdm import tqdm
 
 VIDEO_EXTS = {
     ".mp4",
@@ -61,37 +62,40 @@ def get_media_info(path: Path) -> dict:
 
 def discover_files(paths: list[str]) -> list[Path]:
     candidates = []
-    for p_str in paths:
-        p = Path(p_str)
-        if p.is_file() and p.suffix.lower() in VIDEO_EXTS:
-            if SUFFIX not in p.name:
-                candidates.append(p)
-        elif p.is_dir():
-            for root, _, files in os.walk(p):
-                for f in files:
-                    fp = Path(root) / f
-                    if fp.suffix.lower() in VIDEO_EXTS and SUFFIX not in fp.name:
-                        candidates.append(fp)
+    with tqdm(desc="Discovering files", unit="dir") as pbar:
+        for p_str in paths:
+            p = Path(p_str)
+            if p.is_file() and p.suffix.lower() in VIDEO_EXTS:
+                if SUFFIX not in p.name:
+                    candidates.append(p)
+                    pbar.set_postfix({"found": len(candidates)})
+            elif p.is_dir():
+                for root, _, files in os.walk(p):
+                    pbar.update(1)
+                    for f in files:
+                        fp = Path(root) / f
+                        if fp.suffix.lower() in VIDEO_EXTS and SUFFIX not in fp.name:
+                            candidates.append(fp)
+                    pbar.set_postfix({"found": len(candidates)})
     return candidates
 
 
 def run_encode(items: list[dict], crf: int, preset: str, dry_run: bool = False):
     print(f"\nProcessing {len(items)} files (CRF={crf}, Preset={preset})...\n")
-    for idx, item in enumerate(items, start=1):
+    for item in tqdm(items, desc="Encoding videos", unit="video"):
         orig: Path = item["path"]
         out_path = orig.with_name(f"{orig.stem}{SUFFIX}.mp4")
 
-        print(f"[{idx}/{len(items)}] {orig.name}")
-        print(
-            f"       Original size: {format_bytes(item['size'])} | Bitrate: {item['bitrate']/1e6:.2f} Mbps"
+        tqdm.write(
+            f"\n--> {orig.name} | Original: {format_bytes(item['size'])} | Bitrate: {item['bitrate']/1e6:.2f} Mbps"
         )
 
         if out_path.exists():
-            print(f"       -> Skipped: {out_path.name} already exists.\n")
+            tqdm.write(f"    -> Skipped: {out_path.name} already exists.")
             continue
 
         if dry_run:
-            print(f"       -> [Dry Run] Would output to: {out_path.name}\n")
+            tqdm.write(f"    -> [Dry Run] Would output to: {out_path.name}")
             continue
 
         cmd = [
@@ -123,35 +127,37 @@ def run_encode(items: list[dict], crf: int, preset: str, dry_run: bool = False):
             subprocess.run(cmd, check=True)
             new_size = out_path.stat().st_size
             pct = ((new_size - item["size"]) / item["size"]) * 100
-            print(
-                f"       -> Done: {out_path.name} ({format_bytes(new_size)}, {pct:+.1f}%)\n"
+            tqdm.write(
+                f"    -> Done: {out_path.name} ({format_bytes(new_size)}, {pct:+.1f}%)"
             )
         except subprocess.CalledProcessError:
-            print(f"       -> [ERROR] Failed to transcode {orig.name}\n")
+            tqdm.write(f"    -> [ERROR] Failed to transcode {orig.name}")
 
 
 def run_review(paths: list[str], output_log: str | None = None):
     """Finds existing pairs, prints a comparison log, and optionally exports a TSV."""
-    print("Scanning for existing (Original + Compressed) pairs...\n")
     pairs = []
 
-    for p_str in paths:
-        target = Path(p_str)
-        search_dirs = [target] if target.is_dir() else [target.parent]
-        for sdir in search_dirs:
-            for root, _, files in os.walk(sdir):
-                for f in files:
-                    if SUFFIX in f:
-                        comp_file = Path(root) / f
-                        base_stem = comp_file.name.replace(
-                            f"{SUFFIX}{comp_file.suffix}", ""
-                        )
-                        for cand in (
-                            Path(root) / f"{base_stem}{ext}" for ext in VIDEO_EXTS
-                        ):
-                            if cand.exists() and cand != comp_file:
-                                pairs.append((cand, comp_file))
-                                break
+    with tqdm(desc="Discovering pairs", unit="dir") as pbar:
+        for p_str in paths:
+            target = Path(p_str)
+            search_dirs = [target] if target.is_dir() else [target.parent]
+            for sdir in search_dirs:
+                for root, _, files in os.walk(sdir):
+                    pbar.update(1)
+                    for f in files:
+                        if SUFFIX in f:
+                            comp_file = Path(root) / f
+                            base_stem = comp_file.name.replace(
+                                f"{SUFFIX}{comp_file.suffix}", ""
+                            )
+                            for cand in (
+                                Path(root) / f"{base_stem}{ext}" for ext in VIDEO_EXTS
+                            ):
+                                if cand.exists() and cand != comp_file:
+                                    pairs.append((cand, comp_file))
+                                    break
+                    pbar.set_postfix({"pairs": len(pairs)})
 
     if not pairs:
         print("No duplicate original/compressed pairs found.")
@@ -161,9 +167,7 @@ def run_review(paths: list[str], output_log: str | None = None):
     total_comp = sum(comp.stat().st_size for _, comp in pairs)
     total_saved = total_orig - total_comp
 
-    print(
-        f"{'Original':<35} | {'Orig Size':<10} | {'Comp Size':<10} | {'Savings':<15}"
-    )
+    print(f"{'Original':<35} | {'Orig Size':<10} | {'Comp Size':<10} | {'Savings':<15}")
     print("-" * 80)
 
     rows = []
@@ -267,7 +271,7 @@ def main():
     metadata = []
     min_bytes = args.min_mb * 1024 * 1024
 
-    for f in raw_files:
+    for f in tqdm(raw_files, desc="Probing metadata", unit="file"):
         info = get_media_info(f)
         if info["size"] >= min_bytes:
             metadata.append(info)
