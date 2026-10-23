@@ -40,26 +40,27 @@ df["duration_label"] = [
 ]
 df["bar_label"] = df["member"] + " " + df["duration_label"]
 
-# 3. Stack top-down into available rows
-df = df.sort_values(by=["join", "duration_days"], ascending=[True, False]).reset_index(
+# 3. Stack top-down into available rows, inserting longest duration first
+df = df.sort_values(by=["duration_days", "join"], ascending=[False, True]).reset_index(
     drop=True
 )
 
-row_ends = []
+row_intervals = []
 assigned_rows = []
 for _, row in df.iterrows():
     join_time = row["join"]
     leave_time = row["leave"]
     placed = False
-    for idx, end_time in enumerate(row_ends):
-        if join_time >= end_time:
-            row_ends[idx] = leave_time
-            assigned_rows.append(idx)
+    for r_idx, intervals in enumerate(row_intervals):
+        # Fits if it does not overlap any existing interval on this row
+        if all(leave_time <= s or join_time >= e for s, e in intervals):
+            intervals.append((join_time, leave_time))
+            assigned_rows.append(r_idx)
             placed = True
             break
     if not placed:
-        assigned_rows.append(len(row_ends))
-        row_ends.append(leave_time)
+        assigned_rows.append(len(row_intervals))
+        row_intervals.append([(join_time, leave_time)])
 
 df["row"] = assigned_rows
 
@@ -75,7 +76,7 @@ color_map = {
 }
 
 # 5. Dynamic height based on packed row count (thick bars for clarity and overflow)
-num_rows = len(row_ends)
+num_rows = len(row_intervals)
 chart_height = max(500, num_rows * 48)
 
 # 6. Build timeline
