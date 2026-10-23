@@ -20,9 +20,11 @@ VIDEO_EXTS = {
     ".ts",
 }
 SUFFIX = ".compressed"
+CACHE_FILENAME = "video_filesize_cache.json"
+AUDIO_BITRATE_BPS = 160_000  # 160k aac
 
 
-def format_bytes(size: int) -> str:
+def format_bytes(size: int | float) -> str:
     for unit in ["B", "KB", "MB", "GB", "TB"]:
         if abs(size) < 1024.0:
             return f"{size:3.1f} {unit}"
@@ -30,34 +32,99 @@ def format_bytes(size: int) -> str:
     return f"{size:.1f} PB"
 
 
+def estimate_encoded_size(
+    orig_size: int, duration: float, crf: int, width: int = 0, height: int = 0
+) -> int:
+    """Estimates output filesize for x265 encoding based on duration/resolution or CRF ratio heuristic."""
+    # CRF 28 is x265 default. Each step of ~6 roughly halves/doubles visual bitrate.
+    # Base estimated visual bitrate at 1080p CRF 28 is ~1.5 Mbps.
+    crf_factor = 2.0 ** ((28 - crf) / 6.0)
+
+    if duration > 0 and width > 0 and height > 0:
+        pixels = width * height
+        base_video_bps = 1.5e6 * (pixels / (1920 * 1080)) * crf_factor
+        total_bps = base_video_bps + AUDIO_BITRATE_BPS
+        estimated_bytes = int((total_bps * duration) / 8)
+        # Re-encoding shouldn't realistically be assumed larger than original unless original was extremely low bitrate
+        return max(1, min(estimated_bytes, orig_size))
+
+    if duration > 0:
+        # Fallback if dimensions unavailable: assume typical 1080p target
+        total_bps = (1.5e6 * crf_factor) + AUDIO_BITRATE_BPS
+        estimated_bytes = int((total_bps * duration) / 8)
+        return max(1, min(estimated_bytes, orig_size))
+
+    # Fallback if duration is unknown: heuristic CRF compression ratio against original size
+    # Assuming typical input is H.264 high-bitrate; CRF 24 is ~40% of original
+    ratio = max(0.1, min(0.95, 0.40 * crf_factor))
+    return int(orig_size * ratio)
+
+
 def get_media_info(path: Path) -> dict:
-    """Returns size and duration using ffprobe."""
+    """Returns size, duration, and dimensions using ffprobe."""
     size = path.stat().st_size
     cmd = [
         "ffprobe",
         "-v",
         "error",
         "-show_entries",
-        "format=duration,bit_rate",
+        "format=duration,bit_rate:stream=width,height",
         "-of",
         "json",
         str(path),
     ]
+    duration = 0.0
+    bitrate = 0.0
+    width = 0
+    height = 0
     try:
         res = subprocess.run(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True
         )
-        data = json.loads(res.stdout).get("format", {})
-        duration = float(data.get("duration", 0.0))
-        bitrate = float(data.get("bit_rate", 0.0))
+        parsed = json.loads(res.stdout)
+        fmt = parsed.get("format", {})
+        duration = float(fmt.get("duration", 0.0))
+        bitrate = float(fmt.get("bit_rate", 0.0))
+        for stream in parsed.get("streams", []):
+            if "width" in stream and "height" in stream:
+                width = int(stream["width"])
+                height = int(stream["height"])
+                break
     except Exception:
-        duration = 0.0
-        bitrate = 0.0
+        pass
 
     if bitrate <= 0 and duration > 0:
         bitrate = (size * 8) / duration
 
-    return {"path": path, "size": size, "duration": duration, "bitrate": bitrate}
+    return {
+        "path": path,
+        "size": size,
+        "duration": duration,
+        "bitrate": bitrate,
+        "width": width,
+        "height": height,
+    }
+
+
+def load_cache_file(cache_path: Path) -> dict[str, dict]:
+    """Loads cache file mapping file path string to media info."""
+    if not cache_path.is_file():
+        return {}
+    try:
+        with open(cache_path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+            return data if isinstance(data, dict) else {}
+    except Exception:
+        return {}
+
+
+def save_cache_file(cache_path: Path, data: dict[str, dict]):
+    """Saves cache dictionary to file."""
+    try:
+        with open(cache_path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2)
+    except Exception:
+        pass
 
 
 def discover_files(paths: list[str]) -> list[Path]:
@@ -82,12 +149,17 @@ def discover_files(paths: list[str]) -> list[Path]:
 
 def run_encode(items: list[dict], crf: int, preset: str, dry_run: bool = False):
     print(f"\nProcessing {len(items)} files (CRF={crf}, Preset={preset})...\n")
+    total_in = 0
+    total_out = 0
+    processed_count = 0
+
     for item in tqdm(items, desc="Encoding videos", unit="video"):
         orig: Path = item["path"]
         out_path = orig.with_name(f"{orig.stem}{SUFFIX}.mp4")
+        orig_sz = item["size"]
 
         tqdm.write(
-            f"\n--> {orig.name} | Original: {format_bytes(item['size'])} | Bitrate: {item['bitrate']/1e6:.2f} Mbps"
+            f"\n--> {orig.name} | Original: {format_bytes(orig_sz)} | Bitrate: {item['bitrate']/1e6:.2f} Mbps"
         )
 
         if out_path.exists():
@@ -95,7 +167,22 @@ def run_encode(items: list[dict], crf: int, preset: str, dry_run: bool = False):
             continue
 
         if dry_run:
-            tqdm.write(f"    -> [Dry Run] Would output to: {out_path.name}")
+            expected_sz = estimate_encoded_size(
+                orig_size=orig_sz,
+                duration=item.get("duration", 0.0),
+                crf=crf,
+                width=item.get("width", 0),
+                height=item.get("height", 0),
+            )
+            est_diff = orig_sz - expected_sz
+            est_pct = (est_diff / orig_sz) * 100 if orig_sz > 0 else 0
+            tqdm.write(
+                f"    -> [Dry Run] Would output to: {out_path.name} "
+                f"(Expected: ~{format_bytes(expected_sz)}, Saving: {format_bytes(est_diff)} / {est_pct:.1f}%)"
+            )
+            total_in += orig_sz
+            total_out += expected_sz
+            processed_count += 1
             continue
 
         cmd = [
@@ -126,12 +213,28 @@ def run_encode(items: list[dict], crf: int, preset: str, dry_run: bool = False):
         try:
             subprocess.run(cmd, check=True)
             new_size = out_path.stat().st_size
-            pct = ((new_size - item["size"]) / item["size"]) * 100
+            pct = ((new_size - orig_sz) / orig_sz) * 100 if orig_sz > 0 else 0
             tqdm.write(
                 f"    -> Done: {out_path.name} ({format_bytes(new_size)}, {pct:+.1f}%)"
             )
+            total_in += orig_sz
+            total_out += new_size
+            processed_count += 1
         except subprocess.CalledProcessError:
             tqdm.write(f"    -> [ERROR] Failed to transcode {orig.name}")
+
+    # Summary
+    if processed_count > 0:
+        saved_bytes = total_in - total_out
+        pct_saved = (saved_bytes / total_in) * 100 if total_in > 0 else 0
+        tag = "[Dry Run Estimate]" if dry_run else "[Summary]"
+        print("\n" + "=" * 65)
+        print(f"{tag} Compression Results ({processed_count} files)")
+        print(f"  Total input size:    {format_bytes(total_in)}")
+        print(f"  Total output size:   {format_bytes(total_out)}")
+        print(f"  Absolute saving:     {format_bytes(saved_bytes)}")
+        print(f"  Compression ratio:   {pct_saved:.1f}% space saved")
+        print("=" * 65 + "\n")
 
 
 def run_review(paths: list[str], output_log: str | None = None):
@@ -255,6 +358,11 @@ def main():
         action="store_true",
         help="List matched files and metrics without encoding",
     )
+    parser.add_argument(
+        "--use-cache",
+        action="store_true",
+        help="Read/write probed metadata to video_filesize_cache.json in the input folders to avoid re-probing",
+    )
 
     args = parser.parse_args()
 
@@ -267,14 +375,69 @@ def main():
         print("No eligible video files found.")
         return
 
+    # Handle caching per folder
+    caches: dict[Path, dict] = {}
+    if args.use_cache:
+        target_dirs = set()
+        for p_str in args.paths:
+            p = Path(p_str)
+            target_dirs.add(p if p.is_dir() else p.parent)
+        for d in target_dirs:
+            cfile = d / CACHE_FILENAME
+            caches[cfile] = load_cache_file(cfile)
+
     print(f"Inspecting {len(raw_files)} files with ffprobe...")
     metadata = []
     min_bytes = args.min_mb * 1024 * 1024
+    cache_dirty = set()
 
     for f in tqdm(raw_files, desc="Probing metadata", unit="file"):
-        info = get_media_info(f)
+        info = None
+        cfile = None
+
+        if args.use_cache:
+            # Match cache file by parent directory
+            cfile = f.parent / CACHE_FILENAME
+            if cfile not in caches:
+                caches[cfile] = load_cache_file(cfile)
+            cache_data = caches[cfile]
+            cached_entry = cache_data.get(f.name)
+            current_stat = f.stat()
+
+            if (
+                cached_entry
+                and cached_entry.get("size") == current_stat.st_size
+                and cached_entry.get("mtime") == current_stat.st_mtime
+            ):
+                info = {
+                    "path": f,
+                    "size": cached_entry["size"],
+                    "duration": cached_entry.get("duration", 0.0),
+                    "bitrate": cached_entry.get("bitrate", 0.0),
+                    "width": cached_entry.get("width", 0),
+                    "height": cached_entry.get("height", 0),
+                }
+
+        if info is None:
+            info = get_media_info(f)
+            if args.use_cache and cfile is not None:
+                current_stat = f.stat()
+                caches[cfile][f.name] = {
+                    "size": info["size"],
+                    "duration": info["duration"],
+                    "bitrate": info["bitrate"],
+                    "width": info.get("width", 0),
+                    "height": info.get("height", 0),
+                    "mtime": current_stat.st_mtime,
+                }
+                cache_dirty.add(cfile)
+
         if info["size"] >= min_bytes:
             metadata.append(info)
+
+    if args.use_cache:
+        for cfile in cache_dirty:
+            save_cache_file(cfile, caches[cfile])
 
     if args.sort == "bitrate":
         metadata.sort(key=lambda x: x["bitrate"], reverse=True)
