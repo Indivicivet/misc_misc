@@ -46,7 +46,6 @@ def get_all_users(client: WebClient):
                     "name": member.get("name", ""),
                     "real_name": real_name,
                     "deleted": member.get("deleted", False),
-                    "is_bot": member.get("is_bot", False),
                 }
             )
 
@@ -76,13 +75,35 @@ def get_message_timestamp(client: WebClient, query: str, sort_dir: str):
             return get_message_timestamp(client, query, sort_dir)
         elif error_code == "not_allowed_token_type":
             print(
-                "Error: 'search.messages' requires a Slack User Token ('xoxp-...'). Bot tokens ('xoxb-...') are not permitted by Slack for search.",
+                "Error: 'search.messages' requires a Slack User Token ('xoxp-...'). Bot tokens ('xoxb-...') cannot search.",
                 file=sys.stderr,
             )
             sys.exit(1)
         else:
             print(f"Slack search error: {error_code}", file=sys.stderr)
     return None
+
+
+def get_user_extremes(client: WebClient, user_id: str):
+    # Slack standard search does not support boolean OR, so query messages sent and mentions separately
+    queries = [f"from:<@{user_id}>", f"<@{user_id}>"]
+
+    timestamps = []
+    for q in queries:
+        earliest = get_message_timestamp(client, q, sort_dir="asc")
+        time.sleep(0.3)
+        latest = get_message_timestamp(client, q, sort_dir="desc")
+        time.sleep(0.3)
+
+        if earliest is not None:
+            timestamps.append(earliest)
+        if latest is not None:
+            timestamps.append(latest)
+
+    if not timestamps:
+        return None, None
+
+    return min(timestamps), max(timestamps)
 
 
 def format_date(ts):
@@ -96,24 +117,14 @@ def format_date(ts):
 def main():
     client = get_slack_client()
     users = get_all_users(client)
+    users.sort(key=lambda u: u["real_name"].lower())
 
     print("name,earliest_date,latest_date")
     for user in users:
-        # Search query: message sent by user OR mentioning user
-        user_id = user["id"]
-        query = f"from:<@{user_id}> OR <@{user_id}>"
-
-        earliest_ts = get_message_timestamp(client, query, sort_dir="asc")
-        # Gentle pause to avoid rate limiting
-        time.sleep(0.5)
-
-        latest_ts = get_message_timestamp(client, query, sort_dir="desc")
-        time.sleep(0.5)
-
+        earliest_ts, latest_ts = get_user_extremes(client, user["id"])
         earliest_str = format_date(earliest_ts)
         latest_str = format_date(latest_ts)
 
-        # Escape comma or quotes in name if necessary for standard CSV format
         display_name = user["real_name"].replace('"', '""')
         if "," in display_name:
             display_name = f'"{display_name}"'
