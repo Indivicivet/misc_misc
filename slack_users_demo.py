@@ -4,6 +4,7 @@ import sys
 import time
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
+from tqdm import tqdm
 
 EXCLUDE_BOT = True
 EXCLUDE_GUEST = True
@@ -130,8 +131,8 @@ def main():
     users = get_all_users(client)
     users.sort(key=lambda u: u["real_name"].lower())
 
-    print("name,earliest_date,latest_date")
-    for user in users:
+    results = ["name,earliest_date,latest_date"]
+    for user in tqdm(users, desc="Processing users"):
         earliest_ts, latest_ts = get_user_extremes(client, user["id"])
         earliest_str = format_date(earliest_ts)
         latest_str = format_date(latest_ts)
@@ -140,7 +141,9 @@ def main():
         if "," in display_name:
             display_name = f'"{display_name}"'
 
-        print(f"{display_name},{earliest_str},{latest_str}")
+        results.append(f"{display_name},{earliest_str},{latest_str}")
+
+    print("\n" + "\n".join(results))
 
 
 if __name__ == "__main__":
