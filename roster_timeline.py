@@ -64,8 +64,6 @@ fig = px.timeline(
     title="Company Roster Timeline",
 )
 
-# Reverse y-axis so the longest tenure appears at the top
-fig.update_yaxes(autorange="reversed")
 fig.update_layout(
     height=chart_height,
     xaxis_title="",
