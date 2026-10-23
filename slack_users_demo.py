@@ -69,43 +69,43 @@ def get_all_users(client: WebClient):
 
 
 def get_message_timestamp(client: WebClient, query: str, sort_dir: str):
-    try:
-        response = client.search_messages(
-            query=query,
-            sort="timestamp",
-            sort_dir=sort_dir,
-            count=1,
-        )
-        matches = response.get("messages", {}).get("matches", [])
-        if matches:
-            return float(matches[0]["ts"])
-    except SlackApiError as e:
-        error_code = e.response.get("error", "")
-        if error_code == "ratelimited":
-            retry_after = int(e.response.headers.get("Retry-After", 2))
-            time.sleep(retry_after)
-            return get_message_timestamp(client, query, sort_dir)
-        elif error_code == "not_allowed_token_type":
-            print(
-                "Error: 'search.messages' requires a Slack User Token ('xoxp-...'). Bot tokens ('xoxb-...') cannot search.",
-                file=sys.stderr,
+    while True:
+        try:
+            response = client.search_messages(
+                query=query,
+                sort="timestamp",
+                sort_dir=sort_dir,
+                count=1,
             )
-            sys.exit(1)
-        else:
-            print(f"Slack search error: {error_code}", file=sys.stderr)
-    return None
+            matches = response.get("messages", {}).get("matches", [])
+            if matches:
+                return float(matches[0]["ts"])
+            return None
+        except SlackApiError as e:
+            error_code = e.response.get("error", "")
+            if error_code == "ratelimited":
+                retry_after = int(e.response.headers.get("Retry-After", 5))
+                time.sleep(retry_after)
+                continue
+            elif error_code == "not_allowed_token_type":
+                print(
+                    "Error: 'search.messages' requires a Slack User Token ('xoxp-...'). Bot tokens ('xoxb-...') cannot search.",
+                    file=sys.stderr,
+                )
+                sys.exit(1)
+            else:
+                print(f"Slack search error: {error_code}", file=sys.stderr)
+                return None
 
 
 def get_user_extremes(client: WebClient, user_id: str):
-    # Slack standard search does not support boolean OR, so query messages sent and mentions separately
+    # Search sent messages and mentions separately
     queries = [f"from:<@{user_id}>", f"<@{user_id}>"]
 
     timestamps = []
     for q in queries:
         earliest = get_message_timestamp(client, q, sort_dir="asc")
-        time.sleep(0.3)
         latest = get_message_timestamp(client, q, sort_dir="desc")
-        time.sleep(0.3)
 
         if earliest is not None:
             timestamps.append(earliest)
