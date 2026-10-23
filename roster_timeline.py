@@ -106,6 +106,7 @@ fig = px.timeline(
 # Clean legend: group by flavour and hide duplicate entries
 seen_flavours = set()
 for trace in fig.data:
+    trace.width = 0.8
     flavour = trace.name.split(",")[0].strip()
     trace.name = flavour
     trace.legendgroup = flavour
