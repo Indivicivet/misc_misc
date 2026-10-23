@@ -1,42 +1,70 @@
 import datetime
+import random
 import pandas as pd
 import plotly.express as px
 
 # 1. Load data
-# Expected columns: person, start_date, end_date, role (optional)
 df = pd.read_csv("roster.csv")
 
-# 2. Parse dates; blank end dates imply currently active
-df["start_date"] = pd.to_datetime(df["start_date"])
+# Ensure required columns exist
+df = df.dropna(subset=["member", "join"]).copy()
 today = pd.Timestamp(datetime.date.today())
-df["end_date"] = pd.to_datetime(df["end_date"]).fillna(today)
+df["join"] = pd.to_datetime(df["join"])
+df["leave"] = pd.to_datetime(df["leave"]).fillna(today)
 
-# 3. Sort chronologically by earliest hire date
-first_starts = df.groupby("person")["start_date"].min()
-df["first_start"] = df["person"].map(first_starts)
-df = df.sort_values(by=["first_start", "start_date"], ascending=[True, True])
+# Fill missing flavour with 'unknown'
+df["flavour"] = df["flavour"].fillna("unknown")
 
-# 4. Dynamic height: ~22px per person ensures readable row spacing
-row_count = df["person"].nunique()
+# 2. Identify interns: working <= 3 months (~93 days) strictly within June-October (months 6 to 10)
+df["duration_days"] = (df["leave"] - df["join"]).dt.days
+df["is_intern"] = (
+    (df["duration_days"] <= 93)
+    & (df["join"].dt.year == df["leave"].dt.year)
+    & (df["join"].dt.month >= 6)
+    & (df["leave"].dt.month <= 10)
+)
+
+# 3. Sort top to bottom based on time with the company
+df = df.sort_values(by="duration_days", ascending=False).reset_index(drop=True)
+
+# 4. Assign random color per unique flavour
+random.seed(42)
+palette = (
+    px.colors.qualitative.Plotly + px.colors.qualitative.D3 + px.colors.qualitative.Set2
+)
+unique_flavours = list(df["flavour"].unique())
+random.shuffle(palette)
+color_map = {
+    flavour: palette[i % len(palette)] for i, flavour in enumerate(unique_flavours)
+}
+
+# 5. Dynamic height
+row_count = df["member"].nunique()
 chart_height = max(600, row_count * 22)
 
-# 5. Build timeline
+# 6. Build timeline
 fig = px.timeline(
     df,
-    x_start="start_date",
-    x_end="end_date",
-    y="person",
-    color="role" if "role" in df.columns else None,
-    hover_name="person",
+    x_start="join",
+    x_end="leave",
+    y="member",
+    color="flavour",
+    color_discrete_map=color_map,
+    pattern_shape="is_intern",
+    pattern_shape_map={True: "/", False: ""},
+    category_orders={"member": df["member"].tolist()},
+    hover_name="member",
     hover_data={
-        "start_date": "|%Y-%m-%d",
-        "end_date": "|%Y-%m-%d",
-        "first_start": False,
+        "join": "|%Y-%m-%d",
+        "leave": "|%Y-%m-%d",
+        "flavour": True,
+        "is_intern": True,
+        "duration_days": True,
     },
     title="Company Roster Timeline",
 )
 
-# Put the earliest joiners at the top
+# Reverse y-axis so the longest tenure appears at the top
 fig.update_yaxes(autorange="reversed")
 fig.update_layout(
     height=chart_height,
@@ -46,6 +74,5 @@ fig.update_layout(
     xaxis=dict(rangeslider=dict(visible=True), type="date"),
 )
 
-# Export to a standalone interactive HTML file
 fig.write_html("timeline.html")
 fig.show()
