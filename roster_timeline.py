@@ -99,7 +99,7 @@ fig = px.timeline(
         "is_intern": True,
         "duration_days": True,
     },
-    title="Company Roster Timeline",
+    title="Roster Timeline",
 )
 
 # Intern stripes: 50:50 coverage with a lighter color instead of thin dark stripes
