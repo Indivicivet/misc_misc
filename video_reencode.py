@@ -21,7 +21,7 @@ VIDEO_EXTS = {
 }
 SUFFIX = ".compressed"
 CACHE_FILENAME = "video_filesize_cache.json"
-AUDIO_BITRATE_BPS = 160_000  # 160k aac
+MODERN_CODECS = {"hevc", "h265", "av1", "vp9"}
 
 
 def format_bytes(size: int | float) -> str:
@@ -33,9 +33,14 @@ def format_bytes(size: int | float) -> str:
 
 
 def estimate_encoded_size(
-    orig_size: int, duration: float, crf: int, width: int = 0, height: int = 0
+    orig_size: int,
+    duration: float,
+    crf: int,
+    width: int = 0,
+    height: int = 0,
+    codec: str = "",
 ) -> int:
-    """Estimates output filesize for x265 encoding based on duration/resolution or CRF ratio heuristic."""
+    """Estimates output filesize for x265 encoding based on duration/resolution, codec, or CRF ratio heuristic."""
     # CRF 28 is x265 default. Each step of ~6 roughly halves/doubles visual bitrate.
     # Base estimated visual bitrate at 1080p CRF 28 is ~1.5 Mbps.
     crf_factor = 2.0 ** ((28 - crf) / 6.0)
@@ -43,32 +48,33 @@ def estimate_encoded_size(
     if duration > 0 and width > 0 and height > 0:
         pixels = width * height
         base_video_bps = 1.5e6 * (pixels / (1920 * 1080)) * crf_factor
-        total_bps = base_video_bps + AUDIO_BITRATE_BPS
+        # Audio is copied; approximate audio at ~128 kbps for container size estimate
+        total_bps = base_video_bps + 128_000
         estimated_bytes = int((total_bps * duration) / 8)
-        # Re-encoding shouldn't realistically be assumed larger than original unless original was extremely low bitrate
         return max(1, min(estimated_bytes, orig_size))
 
     if duration > 0:
         # Fallback if dimensions unavailable: assume typical 1080p target
-        total_bps = (1.5e6 * crf_factor) + AUDIO_BITRATE_BPS
+        total_bps = (1.5e6 * crf_factor) + 128_000
         estimated_bytes = int((total_bps * duration) / 8)
         return max(1, min(estimated_bytes, orig_size))
 
     # Fallback if duration is unknown: heuristic CRF compression ratio against original size
-    # Assuming typical input is H.264 high-bitrate; CRF 24 is ~40% of original
-    ratio = max(0.1, min(0.95, 0.40 * crf_factor))
+    # If already modern codec (HEVC/AV1/VP9), compression headroom is much lower
+    base_ratio = 0.85 if codec.lower() in MODERN_CODECS else 0.40
+    ratio = max(0.1, min(0.95, base_ratio * crf_factor))
     return int(orig_size * ratio)
 
 
 def get_media_info(path: Path) -> dict:
-    """Returns size, duration, and dimensions using ffprobe."""
+    """Returns size, duration, dimensions, and video codec using ffprobe."""
     size = path.stat().st_size
     cmd = [
         "ffprobe",
         "-v",
         "error",
         "-show_entries",
-        "format=duration,bit_rate:stream=width,height",
+        "format=duration,bit_rate:stream=codec_type,codec_name,width,height",
         "-of",
         "json",
         str(path),
@@ -77,6 +83,7 @@ def get_media_info(path: Path) -> dict:
     bitrate = 0.0
     width = 0
     height = 0
+    codec = ""
     try:
         res = subprocess.run(
             cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, check=True
@@ -86,9 +93,10 @@ def get_media_info(path: Path) -> dict:
         duration = float(fmt.get("duration", 0.0))
         bitrate = float(fmt.get("bit_rate", 0.0))
         for stream in parsed.get("streams", []):
-            if "width" in stream and "height" in stream:
-                width = int(stream["width"])
-                height = int(stream["height"])
+            if stream.get("codec_type") == "video":
+                codec = stream.get("codec_name", "")
+                width = int(stream.get("width", 0) or 0)
+                height = int(stream.get("height", 0) or 0)
                 break
     except Exception:
         pass
@@ -103,6 +111,7 @@ def get_media_info(path: Path) -> dict:
         "bitrate": bitrate,
         "width": width,
         "height": height,
+        "codec": codec,
     }
 
 
@@ -147,7 +156,13 @@ def discover_files(paths: list[str]) -> list[Path]:
     return candidates
 
 
-def run_encode(items: list[dict], crf: int, preset: str, dry_run: bool = False):
+def run_encode(
+    items: list[dict],
+    crf: int,
+    preset: str,
+    dry_run: bool = False,
+    skip_modern: bool = True,
+):
     print(f"\nProcessing {len(items)} files (CRF={crf}, Preset={preset})...\n")
     total_in = 0
     total_out = 0
@@ -157,10 +172,21 @@ def run_encode(items: list[dict], crf: int, preset: str, dry_run: bool = False):
         orig: Path = item["path"]
         out_path = orig.with_name(f"{orig.stem}{SUFFIX}.mp4")
         orig_sz = item["size"]
+        codec = item.get("codec", "unknown")
 
         tqdm.write(
-            f"\n--> {orig.name} | Original: {format_bytes(orig_sz)} | Bitrate: {item['bitrate']/1e6:.2f} Mbps"
+            f"\n--> {orig.name} | Original: {format_bytes(orig_sz)} | "
+            f"Bitrate: {item['bitrate']/1e6:.2f} Mbps | Codec: {codec}"
         )
+
+        if skip_modern and codec.lower() in MODERN_CODECS:
+            # Check if modern codec file is already relatively efficient (< 8 Mbps)
+            # Re-encoding a 2 Mbps HEVC/AV1 video incurs generational quality loss for negligible gain
+            if item["bitrate"] < 8e6:
+                tqdm.write(
+                    f"    -> Skipped: already encoded with efficient codec ({codec}) at modest bitrate."
+                )
+                continue
 
         if out_path.exists():
             tqdm.write(f"    -> Skipped: {out_path.name} already exists.")
@@ -173,6 +199,7 @@ def run_encode(items: list[dict], crf: int, preset: str, dry_run: bool = False):
                 crf=crf,
                 width=item.get("width", 0),
                 height=item.get("height", 0),
+                codec=codec,
             )
             est_diff = orig_sz - expected_sz
             est_pct = (est_diff / orig_sz) * 100 if orig_sz > 0 else 0
@@ -201,14 +228,23 @@ def run_encode(items: list[dict], crf: int, preset: str, dry_run: bool = False):
             str(crf),
             "-preset",
             preset,
-            "-c:a",
-            "aac",
-            "-b:a",
-            "160k",
-            "-c:s",
-            "copy",
-            str(out_path),
         ]
+
+        # Safety ceiling: cap maxrate to 70% of source bitrate to prevent runaway bloat on noisy inputs
+        if item["bitrate"] > 0:
+            maxrate_kbps = max(500, int((item["bitrate"] * 0.70) / 1000))
+            bufsize_kbps = maxrate_kbps * 2
+            cmd.extend(["-maxrate", f"{maxrate_kbps}k", "-bufsize", f"{bufsize_kbps}k"])
+
+        cmd.extend(
+            [
+                "-c:a",
+                "copy",
+                "-c:s",
+                "copy",
+                str(out_path),
+            ]
+        )
 
         try:
             subprocess.run(cmd, check=True)
@@ -350,8 +386,13 @@ def main():
     )
     parser.add_argument(
         "--preset",
-        default="fast",
-        help="x265 preset (ultrafast, fast, medium, slow)",
+        default="medium",
+        help="x265 preset (ultrafast, fast, medium, slow - default: medium)",
+    )
+    parser.add_argument(
+        "--reencode-modern",
+        action="store_true",
+        help="Force re-encoding even if file is already encoded with HEVC/AV1/VP9 at < 8 Mbps",
     )
     parser.add_argument(
         "--dry-run",
@@ -416,6 +457,7 @@ def main():
                     "bitrate": cached_entry.get("bitrate", 0.0),
                     "width": cached_entry.get("width", 0),
                     "height": cached_entry.get("height", 0),
+                    "codec": cached_entry.get("codec", ""),
                 }
 
         if info is None:
@@ -428,6 +470,7 @@ def main():
                     "bitrate": info["bitrate"],
                     "width": info.get("width", 0),
                     "height": info.get("height", 0),
+                    "codec": info.get("codec", ""),
                     "mtime": current_stat.st_mtime,
                 }
                 cache_dirty.add(cfile)
@@ -447,7 +490,13 @@ def main():
     if args.limit:
         metadata = metadata[: args.limit]
 
-    run_encode(metadata, crf=args.crf, preset=args.preset, dry_run=args.dry_run)
+    run_encode(
+        metadata,
+        crf=args.crf,
+        preset=args.preset,
+        dry_run=args.dry_run,
+        skip_modern=not args.reencode_modern,
+    )
 
 
 if __name__ == "__main__":
