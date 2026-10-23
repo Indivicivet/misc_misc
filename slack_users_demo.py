@@ -131,7 +131,7 @@ def main():
     users = get_all_users(client)
     users.sort(key=lambda u: u["real_name"].lower())
 
-    results = ["name,earliest_date,latest_date"]
+    tqdm.write("name,earliest_date,latest_date")
     for user in tqdm(users, desc="Processing users"):
         earliest_ts, latest_ts = get_user_extremes(client, user["id"])
         earliest_str = format_date(earliest_ts)
@@ -141,9 +141,7 @@ def main():
         if "," in display_name:
             display_name = f'"{display_name}"'
 
-        results.append(f"{display_name},{earliest_str},{latest_str}")
-
-    print("\n" + "\n".join(results))
+        tqdm.write(f"{display_name},{earliest_str},{latest_str}")
 
 
 if __name__ == "__main__":
