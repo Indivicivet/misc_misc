@@ -5,6 +5,9 @@ import time
 from slack_sdk import WebClient
 from slack_sdk.errors import SlackApiError
 
+EXCLUDE_BOT = True
+EXCLUDE_GUEST = True
+
 
 def get_slack_client() -> WebClient:
     token = os.environ.get("SLACK_USER_TOKEN") or os.environ.get("SLACK_BOT_TOKEN")
@@ -32,7 +35,15 @@ def get_all_users(client: WebClient):
             sys.exit(1)
 
         for member in response["members"]:
-            if member.get("is_bot", False) or member.get("id") == "USLACKBOT":
+            if EXCLUDE_BOT and (
+                member.get("is_bot", False) or member.get("id") == "USLACKBOT"
+            ):
+                continue
+
+            if EXCLUDE_GUEST and (
+                member.get("is_restricted", False)
+                or member.get("is_ultra_restricted", False)
+            ):
                 continue
 
             real_name = (
