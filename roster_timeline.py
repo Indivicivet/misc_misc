@@ -74,9 +74,9 @@ color_map = {
     flavour: palette[i % len(palette)] for i, flavour in enumerate(unique_flavours)
 }
 
-# 5. Dynamic height based on packed row count
+# 5. Dynamic height based on packed row count (taller bars for clarity and overflow)
 num_rows = len(row_ends)
-chart_height = max(400, num_rows * 32)
+chart_height = max(500, num_rows * 48)
 
 # 6. Build timeline
 fig = px.timeline(
@@ -102,17 +102,28 @@ fig = px.timeline(
     title="Company Roster Timeline",
 )
 
+# Text styling: do not compress to ultra-tiny on small boxes (constraintext='none'),
+# larger font with contrast shadow so it stays legible over any color or overflow.
 fig.update_traces(
     textposition="inside",
     insidetextanchor="middle",
-    constraintext="inside",
+    constraintext="none",
+    cliponaxis=False,
+    textfont=dict(size=13, weight="bold", shadow="auto"),
+    insidetextfont=dict(size=13, weight="bold", shadow="auto"),
 )
+
+# Intern stripes: 50:50 coverage with a lighter color instead of thin dark stripes
+for trace in fig.data:
+    if trace.marker.pattern and trace.marker.pattern.shape:
+        trace.marker.pattern.solidity = 0.5
+        trace.marker.pattern.fgcolor = "rgba(255, 255, 255, 0.7)"
 
 fig.update_layout(
     height=chart_height,
     xaxis_title="",
     yaxis_title="",
-    bargap=0.2,
+    bargap=0.15,
     xaxis=dict(rangeslider=dict(visible=True), type="date"),
     yaxis=dict(
         autorange="reversed",
