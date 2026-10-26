@@ -19,7 +19,7 @@ df["flavour"] = df["flavour"].fillna("unknown")
 # 2. Identify interns: working <= 3 months (~93 days) strictly within June-October (months 6 to 10)
 df["duration_days"] = (df["leave"] - df["join"]).dt.days
 df["is_intern"] = (
-    (df["duration_days"] <= 93)
+    (df["duration_days"] <= 94)
     & (df["join"].dt.year == df["leave"].dt.year)
     & (df["join"].dt.month >= 6)
     & (df["leave"].dt.month <= 10)
