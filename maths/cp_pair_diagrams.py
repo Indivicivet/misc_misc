@@ -37,8 +37,9 @@ class CurveGenerator:
 
     def __post_init__(self):
         self._thetas = np.linspace(0, 2 * np.pi, self.n_thetas + 1)
-        self._cos = np.cos(self._thetas)
-        self._sin = np.sin(self._thetas)
+        # 90deg offset so 0 is top not right:
+        self._cos = -np.sin(self._thetas)
+        self._sin = np.cos(self._thetas)
 
     def generate_curve(self, atom, idx=0):
         amps = (
