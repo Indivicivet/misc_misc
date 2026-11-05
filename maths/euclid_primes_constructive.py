@@ -24,7 +24,7 @@ def is_probable_prime(n):
             continue
         skip_to_next_a = False
         for _ in range(s - 1):
-            x = (x ** 2) % n
+            x = (x**2) % n
             if x == n - 1:
                 skip_to_next_a = True
                 break
@@ -41,7 +41,7 @@ def pollard_rho(n):
         return 3
     while True:
         c = random.randrange(1, n - 1)
-        sqmod = lambda a: (a ** 2 + c) % n
+        sqmod = lambda a: (a**2 + c) % n
         x = random.randrange(0, n)
         y = x
         d = 1
@@ -61,7 +61,7 @@ def smallest_prime_factor(n):
     # trial divide a bit to strip tiny factors quickly
     j = 5
     w = 2
-    while j ** 2 <= n and j < 10_000:
+    while j**2 <= n and j < 10_000:
         if n % j == 0:
             return j
         j += w

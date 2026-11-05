@@ -1,6 +1,7 @@
 """
 solve (toy) problem on SO3 by lie algebra methods
 """
+
 from typing import Optional
 
 import matplotlib.pyplot as plt

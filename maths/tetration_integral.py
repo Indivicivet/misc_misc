@@ -5,11 +5,11 @@ import matplotlib.pyplot as plt
 
 def tet_n(x, n):
     if n == 0:
-        return x ** 0
+        return x**0
     n -= 1
     y = x.copy()
     while n:
-        y = x ** y
+        y = x**y
         n -= 1
     return y
 
@@ -22,7 +22,7 @@ xx = xr.DataArray(
     coords={"x": np.linspace(0, 1, SAMPLES)},
     dims=["n", "x"],
 )
-tet_ns = [xx ** 0, xx]
+tet_ns = [xx**0, xx]
 for _ in range(MAX_N - 1):
     tet_ns.append(xx ** tet_ns[-1])
 
