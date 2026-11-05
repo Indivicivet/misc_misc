@@ -27,7 +27,7 @@ class CurveData:
 
 @dataclass
 class CurveGenerator:
-    n_thetas: int = 360
+    n_thetas: int = 1080
     exp_dropoff: float = 10
     min_amp: float = 0.2
     max_base_amp: float = 0.5
