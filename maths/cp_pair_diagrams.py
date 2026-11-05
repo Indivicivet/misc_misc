@@ -63,11 +63,10 @@ class CurveGenerator:
             raise ValueError("atoms must be nonempty") from e
         if not isinstance(atoms[0], Atom):
             atoms = [Atom(*a) for a in atoms]
-        prime_groups = {p: [a for a in atoms if a.p == p] for p in {a.p for a in atoms}}
         return [
             self.generate_curve(atom, idx=i_this_prime)
-            for prime, p_atoms in prime_groups.items()
-            for i_this_prime, atom in enumerate(p_atoms)
+            for prime in {a.p for a in atoms}
+            for i_this_prime, atom in enumerate(a for a in atoms if a.p == prime)
         ]
 
 
