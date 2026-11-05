@@ -41,12 +41,13 @@ class CurveGenerator:
         self._sin = np.sin(self._thetas)
 
     def generate_curve(self, atom, idx=0):
-        amps = self.min_amp + (self.max_base_amp - self.min_amp) * np.tanh(
-            atom.p - 2 + idx * 0.1
-        ) + np.exp(
-            -self.exp_dropoff * np.abs(np.sin(
-                (self._thetas * atom.p) / 2 + atom.offs * 2 * np.pi
-            ))
+        amps = (
+            self.min_amp
+            + (self.max_base_amp - self.min_amp) * np.tanh(atom.p - 2 + idx * 0.1)
+            + np.exp(
+                -self.exp_dropoff
+                * np.abs(np.sin((self._thetas * atom.p) / 2 + atom.offs * 2 * np.pi))
+            )
         )
         return CurveData(
             p=atom.p,
@@ -74,7 +75,7 @@ if __name__ == "__main__":
     plt.style.use("dark_background")
     plt.figure(figsize=(10, 10))
     for curve in CurveGenerator().generate_all_curves(
-        [2, 0], [2, 1/4], [4, 0],  # 4 isn't prime but it's an easy example
+        [2, 0], [2, 1 / 4], [4, 0]  # 4 isn't prime but it's an easy example
     ):
         curve.plot()
     plt.axis("scaled")
