@@ -47,7 +47,9 @@ class CurveGenerator:
             + (self.max_base_amp - self.min_amp) * np.tanh(atom.p - 2 + idx * 0.1)
             + np.exp(
                 -self.exp_dropoff
-                * np.abs(np.sin((self._thetas * atom.p) / 2 + atom.offs * 2 * np.pi))
+                * np.abs(
+                    np.sin((self._thetas * atom.p) / 2 + atom.p * atom.offs * np.pi)
+                )
             )
         )
         return CurveData(
